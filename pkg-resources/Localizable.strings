@@ -1,0 +1,2 @@
+"OC_MISSING_TITLE" = "openconnect not found";
+"OC_MISSING_MESSAGE" = "The app needs openconnect, which is not installed on this Mac.\n\nYou can continue the installation, then run in Terminal:\n\nbrew install openconnect";

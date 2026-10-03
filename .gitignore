@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# Built packages and profiles (regenerate with ./build.sh pkg / mobileconfig)
+dist/
+*.pkg
+
+# Your local build values (team, bundle id, certificates): see config.env.example
+config.env
+
+# Local, untracked notes and documentation
+docs/
+
+# Configuration profiles: only the template is tracked
+profiles/*
+!profiles/example.env

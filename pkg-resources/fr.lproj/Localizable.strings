@@ -1,0 +1,2 @@
+"OC_MISSING_TITLE" = "openconnect est introuvable";
+"OC_MISSING_MESSAGE" = "L'app a besoin d'openconnect, qui n'est pas installé sur ce Mac.\n\nVous pouvez poursuivre l'installation, puis lancer dans le Terminal :\n\nbrew install openconnect";

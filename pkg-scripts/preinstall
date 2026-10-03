@@ -1,0 +1,14 @@
+#!/bin/sh
+# Avant le remplacement de l'app : retenir si elle tournait (pour la relancer dans
+# postinstall) puis la fermer.
+MARK=/private/tmp/@BUNDLE_ID@.relaunch
+rm -f "$MARK"
+
+pid=$(pgrep -x OpenConnectMenu 2>/dev/null | head -n 1)
+if [ -n "$pid" ]; then
+    # Propriétaire du processus = session dans laquelle rouvrir l'app.
+    uid=$(ps -o uid= -p "$pid" 2>/dev/null | tr -d ' ')
+    [ -n "$uid" ] && echo "$uid" > "$MARK"
+    pkill -x OpenConnectMenu 2>/dev/null || true
+fi
+exit 0

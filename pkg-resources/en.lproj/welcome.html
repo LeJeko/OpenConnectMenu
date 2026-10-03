@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><style>
+  body { font-family: -apple-system, Helvetica, sans-serif; font-size: 13px; line-height: 1.45; }
+  h1 { font-size: 18px; } code { font-family: Menlo, monospace; background: #8882; padding: 1px 5px; border-radius: 4px; }
+</style></head>
+<body>
+<h1>VPN OpenConnect</h1>
+<p>This menu bar app connects to an AnyConnect-compatible VPN using <b>openconnect</b>, without asking for an administrator password on every connection.</p>
+<h2>Requirement</h2>
+<p><b>openconnect</b> must be installed with Homebrew. If it is not, open Terminal and run:</p>
+<p><code>brew install openconnect</code></p>
+<p>Homebrew is available from <code>https://brew.sh</code>.</p>
+<h2>After installation</h2>
+<ol>
+  <li>Open <b>VPN OpenConnect</b> from the Applications folder.</li>
+  <li>Allow the helper in <b>System Settings › General › Login Items &amp; Extensions</b>.</li>
+  <li>Choose <b>Approve openconnect…</b> in the menu (administrator password, once).</li>
+  <li>Enter your username, password and TOTP secret in <b>Settings…</b></li>
+</ol>
+</body>
+</html>

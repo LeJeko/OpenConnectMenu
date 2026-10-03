@@ -1,0 +1,30 @@
+#!/bin/sh
+# Après le remplacement de l'app :
+#  1. relancer le helper. L'ancien processus tourne encore avec l'ancien code ; macOS constate
+#     que le fichier sur le disque a changé et l'app refuse alors de lui parler
+#     (« l'assistant est injoignable »). launchd le redémarre avec le nouveau binaire.
+#  2. rouvrir l'app si elle tournait avant la mise à jour (marqueur écrit par preinstall) ou s'il
+#     s'agit d'une réinstallation (approbation d'openconnect déjà enregistrée) : c'est le cas de
+#     « brew upgrade », qui ferme l'app et désinstalle l'ancienne version avant d'installer.
+LABEL=@HELPER_LABEL@
+MARK=/private/tmp/@BUNDLE_ID@.relaunch
+TRUST="/Library/Application Support/OpenConnectMenu/trust.json"
+
+# Si le helper n'est pas (encore) enregistré, il n'y a rien à relancer.
+if launchctl print "system/$LABEL" >/dev/null 2>&1; then
+    launchctl kickstart -k "system/$LABEL" >/dev/null 2>&1 || true
+fi
+
+uid=""
+if [ -f "$MARK" ]; then
+    uid=$(cat "$MARK")
+    rm -f "$MARK"
+elif [ -f "$TRUST" ]; then
+    uid=$(stat -f %u /dev/console 2>/dev/null)   # utilisateur de la session ouverte
+fi
+
+case "$uid" in
+    ''|0|*[!0-9]*) ;;   # rien, écran de connexion (root) ou valeur invalide : on ne lance rien
+    *) launchctl asuser "$uid" /usr/bin/open -a /Applications/OpenConnectMenu.app >/dev/null 2>&1 || true ;;
+esac
+exit 0

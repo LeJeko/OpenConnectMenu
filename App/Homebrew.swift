@@ -1,0 +1,17 @@
+import Foundation
+
+/// Détection côté app d'openconnect et de Homebrew (mêmes emplacements que le helper).
+enum Homebrew {
+    static let installCommand = "brew install openconnect"
+    static let website = "https://brew.sh"
+
+    static var openConnectInstalled: Bool {
+        ["/opt/homebrew/bin/openconnect", "/usr/local/bin/openconnect"]
+            .contains { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    static var brewInstalled: Bool {
+        ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"]
+            .contains { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+}

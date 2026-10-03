@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>VPN OpenConnect</title>
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <options customize="never" require-scripts="false" hostArchitectures="@ARCH@"/>
+    <allowed-os-versions>
+        <os-version min="13.0"/>
+    </allowed-os-versions>
+    <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
+    <installation-check script="checkPrerequisites()"/>
+    <script>
+    <![CDATA[
+    // openconnect est requis mais ne peut pas être embarqué : simple avertissement, l'installation reste possible.
+    function checkPrerequisites() {
+        if (system.files.fileExistsAtPath('/opt/homebrew/bin/openconnect') ||
+            system.files.fileExistsAtPath('/usr/local/bin/openconnect')) {
+            return true;
+        }
+        my.result.type = 'Warning';
+        my.result.title = system.localizedString('OC_MISSING_TITLE');
+        my.result.message = system.localizedString('OC_MISSING_MESSAGE');
+        return false;
+    }
+    ]]>
+    </script>
+    <choices-outline>
+        <line choice="default">
+            <line choice="@PKG_ID@"/>
+        </line>
+    </choices-outline>
+    <choice id="default"/>
+    <choice id="@PKG_ID@" visible="false">
+        <pkg-ref id="@PKG_ID@"/>
+    </choice>
+    <pkg-ref id="@PKG_ID@" version="@VERSION@" onConclusion="none">component.pkg</pkg-ref>
+</installer-gui-script>
