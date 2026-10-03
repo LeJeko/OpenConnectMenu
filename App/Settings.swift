@@ -27,133 +27,204 @@ enum Keychain {
     }
 }
 
-enum SettingsStore {
-    private static let d = UserDefaults.standard
-
-    /// Réglage imposé par un profil de configuration macOS (installé à la main ou par MDM) :
-    /// UserDefaults renvoie alors la valeur du profil, et l'utilisateur ne peut pas la changer.
-    static func isManaged(_ key: String) -> Bool { d.objectIsForced(forKey: key) }
-
-    static var server: String {
-        get { d.string(forKey: "server") ?? "" }
-        set { d.set(newValue, forKey: "server") }
-    }
-    /// Protocole d'openconnect. Une valeur inconnue (profil mal écrit…) retombe sur AnyConnect.
-    static var vpnProtocol: String {
-        get {
-            let v = d.string(forKey: "protocol") ?? Constants.defaultProtocol
-            return Constants.protocols.contains(where: { $0.id == v }) ? v : Constants.defaultProtocol
-        }
-        set { d.set(newValue, forKey: "protocol") }
-    }
-    static var authgroup: String {
-        get { d.string(forKey: "authgroup") ?? "" }
-        set { d.set(newValue, forKey: "authgroup") }
-    }
-    static var useragent: String {
-        get { d.string(forKey: "useragent") ?? "" }
-        set { d.set(newValue, forKey: "useragent") }
-    }
-    static var username: String {
-        get { d.string(forKey: "username") ?? "" }
-        set { d.set(newValue, forKey: "username") }
-    }
-    static var password: String {
-        get { Keychain.get("password") ?? "" }
-        set { Keychain.set(newValue, account: "password") }
-    }
-    static var totpSecret: String {
-        get { Keychain.get("totp") ?? "" }
-        set { Keychain.set(normalizeTOTP(newValue), account: "totp") }
-    }
-
-    /// Accepte une clé nue, une clé « base32:… » ou l'URL otpauth:// complète.
-    static func normalizeTOTP(_ input: String) -> String {
-        var t = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        if t.lowercased().hasPrefix("otpauth://"),
-           let items = URLComponents(string: t)?.queryItems,
-           let secret = items.first(where: { $0.name == "secret" })?.value {
-            t = secret
-        }
-        t = t.replacingOccurrences(of: "base32:", with: "", options: .caseInsensitive)
-        return t.filter { !$0.isWhitespace && $0 != "-" }.uppercased()
-    }
-
-    static func makeRequest() -> ConnectRequest? {
-        guard !server.isEmpty, !username.isEmpty, !password.isEmpty, !totpSecret.isEmpty else { return nil }
-        return ConnectRequest(server: server, vpnProtocol: vpnProtocol, authgroup: authgroup, useragent: useragent,
-                              username: username, password: password, totpSecret: totpSecret)
-    }
+/// Le Trousseau, vu par ConfigStore.
+struct KeychainSecrets: SecretStore {
+    func get(_ account: String) -> String? { Keychain.get(account) }
+    func set(_ value: String, account: String) { Keychain.set(value, account: account) }
 }
 
+extension ConfigStore {
+    /// Le magasin de l'app : préférences de l'utilisateur et Trousseau.
+    static let shared = ConfigStore(prefs: UserDefaults.standard, secrets: KeychainSecrets())
+}
+
+enum SettingsTab { case configurations, general }
+
 struct SettingsView: View {
+    var selecting: String?
+    var general: GeneralActions?
     var onClose: () -> Void
 
-    @State private var server = SettingsStore.server
-    @State private var vpnProtocol = SettingsStore.vpnProtocol
-    @State private var authgroup = SettingsStore.authgroup
-    @State private var useragent = SettingsStore.useragent
-    @State private var username = SettingsStore.username
-    @State private var password = SettingsStore.password
-    @State private var totp = SettingsStore.totpSecret
+    private let store: ConfigStore
 
-    private let managedKeys = ["server", "protocol", "authgroup", "useragent", "username"]
-    private var anyManaged: Bool { managedKeys.contains(where: SettingsStore.isManaged) }
+    @State private var configs: [VPNConfig]
+    @State private var selection: String
+    @State private var passwords: [String: String]
+    @State private var totps: [String: String]
+    @State private var tab: SettingsTab
+
+    init(store: ConfigStore = .shared, selecting: String? = nil, general: GeneralActions? = nil,
+         tab: SettingsTab = .configurations, onClose: @escaping () -> Void) {
+        self.store = store
+        self.selecting = selecting
+        self.general = general
+        self._tab = State(initialValue: tab)
+        self.onClose = onClose
+        let list = store.configs()
+        _configs = State(initialValue: list)
+        _selection = State(initialValue: list.first(where: { $0.id == selecting })?.id ?? list.first?.id ?? "")
+        _passwords = State(initialValue: Dictionary(uniqueKeysWithValues: list.map { ($0.id, store.password(for: $0.id)) }))
+        _totps = State(initialValue: Dictionary(uniqueKeysWithValues: list.map { ($0.id, store.totp(for: $0.id)) }))
+    }
+
+    private var index: Int? { configs.firstIndex { $0.id == selection } }
+    private var current: VPNConfig? { index.map { configs[$0] } }
+    private var anyLocked: Bool { configs.contains { $0.managed || !$0.locked.isEmpty } }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        Group {
+            if let general {
+                TabView(selection: $tab) {
+                    configurationsTab
+                        .tabItem { Text("Configurations") }
+                        .tag(SettingsTab.configurations)
+                    GeneralSettingsView(actions: general)
+                        .tabItem { Text("General") }
+                        .tag(SettingsTab.general)
+                }
+            } else {
+                configurationsTab
+            }
+        }
+        .frame(width: 720, height: general == nil ? 560 : 610)
+    }
+
+    /// Liste des configurations et formulaire. Enregistrer / Annuler ne concernent que cet onglet.
+    private var configurationsTab: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                sidebar
+                Divider()
+                detail
+            }
+            Divider()
+            HStack {
+                if anyLocked {
+                    Label("Some settings are imposed by a configuration profile and cannot be changed.", systemImage: "lock.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Cancel", action: onClose).keyboardShortcut(.cancelAction)
+                Button("Save", action: save).keyboardShortcut(.defaultAction)
+            }
+            .padding(12)
+        }
+    }
+
+    // MARK: Liste des configurations
+
+    private var sidebar: some View {
+        VStack(spacing: 0) {
+            List(selection: $selection) {
+                ForEach(configs) { c in
+                    HStack {
+                        Text(verbatim: c.name)
+                        Spacer()
+                        if c.managed {
+                            Image(systemName: "lock.fill").foregroundStyle(.secondary).help(L("Managed by a configuration profile"))
+                        }
+                    }
+                    .tag(c.id)
+                }
+            }
+            .listStyle(.sidebar)
+            Divider()
+            HStack(spacing: 4) {
+                Button(action: add) { Image(systemName: "plus") }
+                    .help(L("Add a configuration"))
+                Button(action: remove) { Image(systemName: "minus") }
+                    .help(L("Remove the configuration"))
+                    .disabled(current == nil || current?.managed == true)
+                Spacer()
+            }
+            .buttonStyle(.borderless)
+            .padding(8)
+        }
+        .frame(width: 210)
+    }
+
+    // MARK: Détail
+
+    @ViewBuilder
+    private var detail: some View {
+        if let c = current {
             Form {
+                Section("Configuration") {
+                    TextField("Name", text: name).disabled(c.managed)
+                }
                 Section("Server") {
-                    TextField("Address", text: $server, prompt: Text(verbatim: "https://vpn.example.com"))
-                        .disabled(SettingsStore.isManaged("server"))
-                    Picker("Protocol", selection: $vpnProtocol) {
+                    TextField("Address", text: field(.server), prompt: Text(verbatim: "https://vpn.example.com"))
+                        .disabled(c.isLocked(.server))
+                    Picker("Protocol", selection: field(.vpnProtocol)) {
                         ForEach(Constants.protocols, id: \.id) { Text(verbatim: $0.label).tag($0.id) }
                     }
-                    .disabled(SettingsStore.isManaged("protocol"))
-                    TextField("Authentication group", text: $authgroup, prompt: Text("Optional"))
-                        .disabled(SettingsStore.isManaged("authgroup"))
-                    TextField("User-Agent", text: $useragent, prompt: Text("Optional"))
-                        .disabled(SettingsStore.isManaged("useragent"))
+                    .disabled(c.isLocked(.vpnProtocol))
+                    TextField("Authentication group", text: field(.authgroup), prompt: Text("Optional"))
+                        .disabled(c.isLocked(.authgroup))
+                    TextField("User-Agent", text: field(.useragent), prompt: Text("Optional"))
+                        .disabled(c.isLocked(.useragent))
                 }
-                Section("Account") {
-                    TextField("Username", text: $username)
-                        .disabled(SettingsStore.isManaged("username"))
-                    SecureField("Password", text: $password)
-                    SecureField("TOTP secret", text: $totp)
+                Section {
+                    TextField("Username", text: field(.username))
+                        .disabled(c.isLocked(.username))
+                    SecureField("Password", text: secret($passwords))
+                    SecureField("TOTP secret", text: secret($totps))
+                } header: {
+                    Text("Account")
+                } footer: {
+                    Text("The TOTP secret accepts the bare Base32 key or the full otpauth:// URL. Password and secret are stored in your Keychain.")
                 }
             }
             .formStyle(.grouped)
-
-            Text("The TOTP secret accepts the bare Base32 key or the full otpauth:// URL. Password and secret are stored in your Keychain.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal)
-
-            if anyManaged {
-                Label("Some settings are imposed by a configuration profile and cannot be changed.", systemImage: "lock.fill")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal)
-            }
-
-            HStack {
+        } else {
+            VStack {
                 Spacer()
-                Button("Cancel", action: onClose).keyboardShortcut(.cancelAction)
-                Button("Save") {
-                    // Les réglages imposés par un profil ne sont jamais réécrits.
-                    if !SettingsStore.isManaged("server") { SettingsStore.server = server.trimmingCharacters(in: .whitespaces) }
-                    if !SettingsStore.isManaged("protocol") { SettingsStore.vpnProtocol = vpnProtocol }
-                    if !SettingsStore.isManaged("authgroup") { SettingsStore.authgroup = authgroup.trimmingCharacters(in: .whitespaces) }
-                    if !SettingsStore.isManaged("useragent") { SettingsStore.useragent = useragent.trimmingCharacters(in: .whitespaces) }
-                    if !SettingsStore.isManaged("username") { SettingsStore.username = username.trimmingCharacters(in: .whitespaces) }
-                    SettingsStore.password = password
-                    SettingsStore.totpSecret = totp
-                    onClose()
-                }
-                .keyboardShortcut(.defaultAction)
+                Text("No configuration. Click + to add one.").foregroundStyle(.secondary)
+                Spacer()
             }
-            .padding([.horizontal, .bottom])
+            .frame(maxWidth: .infinity)
         }
-        .frame(width: 460, height: anyManaged ? 510 : 470)
+    }
+
+    // MARK: Liaisons et actions
+
+    private var name: Binding<String> {
+        Binding(get: { current?.name ?? "" }, set: { v in if let i = index { configs[i].name = v } })
+    }
+
+    private func field(_ f: ConfigField) -> Binding<String> {
+        Binding(get: { current?.value(f) ?? "" }, set: { v in if let i = index { configs[i].set(f, v) } })
+    }
+
+    /// Mot de passe ou secret TOTP de la configuration affichée.
+    private func secret(_ values: Binding<[String: String]>) -> Binding<String> {
+        Binding(get: { values.wrappedValue[selection] ?? "" }, set: { values.wrappedValue[selection] = $0 })
+    }
+
+    private func add() {
+        let c = ConfigStore.newUserConfig()
+        configs.append(c)
+        passwords[c.id] = ""
+        totps[c.id] = ""
+        selection = c.id
+    }
+
+    private func remove() {
+        guard let i = index, !configs[i].managed else { return }
+        let id = configs[i].id
+        configs.remove(at: i)
+        passwords[id] = nil
+        totps[id] = nil
+        selection = configs.first?.id ?? ""
+    }
+
+    private func save() {
+        store.save(configs)
+        for c in configs {
+            store.setPassword(passwords[c.id] ?? "", for: c.id)
+            store.setTOTP(totps[c.id] ?? "", for: c.id)
+        }
+        onClose()
     }
 }

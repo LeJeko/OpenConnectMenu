@@ -76,3 +76,26 @@
 "Repairing helper…" = "Repairing helper…";
 "Helper repair: %@" = "Helper repair: %@";
 "Could not repair the helper" = "Could not repair the helper";
+
+/* Plusieurs configurations */
+"Connect to %@" = "Connect to %@";
+"VPN: connected to %@" = "VPN: connected to %@";
+"Configuration" = "Configuration";
+"Name" = "Name";
+"Default" = "Default";
+"New configuration" = "New configuration";
+"Managed by a configuration profile" = "Managed by a configuration profile";
+"Add a configuration" = "Add a configuration";
+"Remove the configuration" = "Remove the configuration";
+"No configuration. Click + to add one." = "No configuration. Click + to add one.";
+
+/* Onglet Général des réglages */
+"Configurations" = "Configurations";
+"General" = "General";
+"Application" = "Application";
+"Helper" = "Helper";
+"Log" = "Log";
+"Status" = "Status";
+"Version" = "Version";
+"Helper enabled" = "Helper enabled";
+"The helper runs as administrator to start and stop the VPN, so that you are not asked for a password each time." = "The helper runs as administrator to start and stop the VPN, so that you are not asked for a password each time.";

@@ -5,9 +5,10 @@
 #   ./build.sh install    idem, puis installe dans /Applications et lance l'app
 #   ./build.sh pkg        idem, puis fabrique un .pkg signé avec écran d'accueil (copié dans dist/)
 #                         avec NOTARY_PROFILE : le notarise, agrafe le ticket et vérifie Gatekeeper
-#   ./build.sh mobileconfig   fabrique un profil de configuration macOS (.mobileconfig, dans dist/) qui IMPOSE
-#                         le serveur, le groupe d'authentification et l'agent utilisateur définis par PROFILE=…
-#                         (à installer à la main dans Réglages Système, ou à déployer par MDM)
+#   ./build.sh test       compile et exécute les tests (Tests/) ; ne demande ni config.env ni certificat
+#   ./build.sh mobileconfig   fabrique un profil de configuration macOS (.mobileconfig, dans dist/) qui apporte une ou
+#                         plusieurs configurations VPN en lecture seule (PROFILE=a,b), à installer à la main
+#                         dans Réglages Système ou à déployer par MDM
 #
 # Configuration : copiez config.env.example en config.env et renseignez TEAM_ID et BUNDLE_ID.
 #                 Toute variable de l'environnement prime sur config.env.
@@ -18,10 +19,10 @@
 #             INSTALLER_IDENTITY  identité de signature du .pkg (défaut : détectée dans le trousseau)
 #             NOTARY_PROFILE      profil notarytool (xcrun notarytool store-credentials) ; sans lui, pas de notarisation
 #             CONFIG              chemin d'un autre fichier de configuration (défaut : ./config.env)
-#             PROFILE             commande mobileconfig : nom du fichier profiles/<nom>.env qui définit les réglages à
-#                                 imposer (modèle : profiles/example.env)
-#             VPN_SERVER, VPN_PROTOCOL, VPN_AUTHGROUP, VPN_USERAGENT
-#                                 réglages imposés par le profil de configuration (normalement lus dans profiles/<nom>.env)
+#             PROFILE             commande mobileconfig : nom(s) de profils profiles/<nom>.env, séparés par des virgules
+#                                 (une configuration par profil ; modèle : profiles/example.env)
+#             VPN_NAME, VPN_SERVER, VPN_PROTOCOL, VPN_AUTHGROUP, VPN_USERAGENT, VPN_USERNAME
+#                                 réglages imposés (normalement lus dans profiles/<nom>.env ; l'environnement prime)
 #             BUILD               dossier de sortie (hors iCloud Drive)
 #             DIST                dossier où est copié le .pkg (défaut : ./dist)
 #             NO_TIMESTAMP=1      signature hors ligne
@@ -42,25 +43,13 @@ load_config() {
   [ -f "$file" ] || die "Configuration introuvable : $file
   Copiez config.env.example en config.env, puis renseignez TEAM_ID et BUNDLE_ID."
   # Les variables déjà définies dans l'environnement priment sur les fichiers.
-  for v in TEAM_ID BUNDLE_ID IDENTITY INSTALLER_IDENTITY NOTARY_PROFILE PROFILE \
-           VPN_SERVER VPN_PROTOCOL VPN_AUTHGROUP VPN_USERAGENT; do
+  for v in TEAM_ID BUNDLE_ID IDENTITY INSTALLER_IDENTITY NOTARY_PROFILE PROFILE; do
     [ -n "${!v+x}" ] && saved+=("$v=${!v}")
   done
   apply_saved() { for kv in "${saved[@]+"${saved[@]}"}"; do export "${kv%%=*}=${kv#*=}"; done; }
   # shellcheck disable=SC1090
   source "$file"
   apply_saved
-
-  # Profil de configuration (serveur, groupe d'authentification…), chargé après la configuration.
-  if [ -n "${PROFILE:-}" ]; then
-    [[ "$PROFILE" =~ ^[A-Za-z0-9._-]+$ && "$PROFILE" != .* ]] \
-      || die "PROFILE invalide : lettres, chiffres, point, tiret et tiret bas uniquement."
-    [ -f "$ROOT/profiles/$PROFILE.env" ] \
-      || die "Profil introuvable : profiles/$PROFILE.env (modèle : profiles/example.env)"
-    # shellcheck disable=SC1090
-    source "$ROOT/profiles/$PROFILE.env"
-    apply_saved
-  fi
 
   [[ "${TEAM_ID:-}" =~ ^[A-Z0-9]{10}$ ]] \
     || die "TEAM_ID invalide ou absent dans $file : 10 caractères (lettres majuscules et chiffres) attendus."
@@ -98,7 +87,11 @@ substitute() {
   fi
 }
 
-load_config
+if [ "${1:-}" = test ]; then
+  TEAM_ID=TESTTEAM00; BUNDLE_ID=test.bundle   # valeurs fictives : les tests n'en dépendent pas
+else
+  load_config
+fi
 APP_NAME=OpenConnectMenu
 APP_ID="$BUNDLE_ID"
 HELPER_LABEL="$BUNDLE_ID.helper"
@@ -298,30 +291,91 @@ case "${1:-build}" in
 esac
 [ "${1:-}" = pkg ] && INSTALLER_IDENTITY="${INSTALLER_IDENTITY:-$(find_identity "Developer ID Installer" INSTALLER_IDENTITY)}"
 
-# Profil de configuration macOS (.mobileconfig) : impose les réglages non secrets à l'app. macOS les
-# range dans le domaine de préférences de l'app (son identifiant de bundle) ; l'app les affiche grisés.
+# Tests de la logique des configurations (App/ConfigModel.swift, App/ConfigStore.swift), sans interface.
+run_tests() {
+  local out="$BUILD/tests"
+  mkdir -p "$out"
+  cat > "$out/BuildConfig.swift" <<SWIFT
+enum BuildConfig {
+    static let bundleID = "test.bundle"
+    static let teamID = "TESTTEAM00"
+}
+SWIFT
+  echo "▸ Compilation des tests"
+  swiftc -O -swift-version 5 -parse-as-library -target "$(uname -m)-apple-macos$MIN_MACOS" \
+    Shared/Shared.swift "$out/BuildConfig.swift" App/ConfigModel.swift App/ConfigStore.swift \
+    Tests/ConfigStoreTests.swift -o "$out/tests"
+  echo "▸ Exécution"
+  "$out/tests"
+}
+
+# Profil de configuration macOS (.mobileconfig) : apporte des configurations VPN en lecture seule à l'app. macOS range les
+# valeurs dans le domaine de préférences de l'app (son identifiant de bundle), sous la clé « configurations » (un tableau
+# de {name, server, protocol, authgroup, useragent, username}) ; l'app les affiche verrouillées. Le mot de passe et le
+# secret TOTP ne sont jamais dans un profil.
 make_mobileconfig() {
-  local v
-  VPN_SERVER="${VPN_SERVER:-}"; VPN_PROTOCOL="${VPN_PROTOCOL:-}"; VPN_AUTHGROUP="${VPN_AUTHGROUP:-}"; VPN_USERAGENT="${VPN_USERAGENT:-}"
-  [ -n "$VPN_SERVER$VPN_PROTOCOL$VPN_AUTHGROUP$VPN_USERAGENT" ] \
-    || die "Rien à imposer : choisissez un profil (PROFILE=<nom>, voir profiles/example.env) ou définissez VPN_SERVER."
-  # Ces valeurs sont passées à PlistBuddy : pas de guillemet, d'antislash ni de caractère de contrôle.
-  for v in VPN_SERVER VPN_PROTOCOL VPN_AUTHGROUP VPN_USERAGENT; do
-    case "${!v}" in *\"*|*\\*) die "$v : guillemets et antislash interdits." ;; esac
-    [[ "${!v}" != *[[:cntrl:]]* ]] || die "$v : caractères de contrôle interdits."
-  done
-  [[ -z "$VPN_SERVER" || "$VPN_SERVER" == https://* ]] \
-    || die "VPN_SERVER doit commencer par https:// (valeur : $VPN_SERVER)."
+  local pb="/usr/libexec/PlistBuddy" v n i
+  local -a profile_names=() rows=()
+  local -a envvars=(VPN_NAME VPN_SERVER VPN_PROTOCOL VPN_AUTHGROUP VPN_USERAGENT VPN_USERNAME)
+  # Séparateur des champs d'une configuration. Ce n'est pas un « blanc » pour IFS (la tabulation en est un : read
+  # fusionnerait alors les champs vides et décalerait les valeurs). C'est un caractère de contrôle : refusé dans les valeurs.
+  local FS=$'\x1f'
+
+  # Une configuration par profil (PROFILE=a,b) ; sans profil, une seule, décrite par l'environnement (VPN_*).
+  if [ -n "${PROFILE:-}" ]; then IFS=',' read -r -a profile_names <<< "$PROFILE"; else profile_names=(""); fi
+
   # Protocoles gérés : lus dans Shared/Shared.swift, qui est la liste de référence (app et helper).
-  if [ -n "$VPN_PROTOCOL" ]; then
-    local ids; ids="$(sed -nE 's/.*VPNProtocol\(id: "([a-z0-9]+)".*/\1/p' "$ROOT/Shared/Shared.swift" | tr '\n' ' ')"
-    [[ " $ids" == *" $VPN_PROTOCOL "* ]] || die "VPN_PROTOCOL inconnu : « $VPN_PROTOCOL ». Valeurs possibles : ${ids% }"
-  fi
-  local out="$DIST/$APP_NAME${PROFILE:+-$PROFILE}.mobileconfig"
+  local ids; ids="$(sed -nE 's/.*VPNProtocol\(id: "([a-z0-9]+)".*/\1/p' "$ROOT/Shared/Shared.swift" | tr '\n' ' ')"
+
+  # Valeurs de l'environnement d'origine : elles priment sur les fichiers de profil.
+  local -a saved=()
+  for v in "${envvars[@]}"; do [ -n "${!v+x}" ] && saved+=("$v=${!v}"); done
+
+  for n in "${profile_names[@]}"; do
+    if [ -n "$n" ]; then
+      [[ "$n" =~ ^[A-Za-z0-9._-]+$ && "$n" != .* ]] \
+        || die "Nom de profil invalide : « $n » (lettres, chiffres, point, tiret et tiret bas uniquement)."
+      [ -f "$ROOT/profiles/$n.env" ] || die "Profil introuvable : profiles/$n.env (modèle : profiles/example.env)"
+    fi
+    # Chaque profil est lu dans un sous-shell : les variables ne se mélangent pas d'un profil à l'autre.
+    local row
+    row="$(
+      unset "${envvars[@]}"
+      # shellcheck disable=SC1090
+      [ -n "$n" ] && source "$ROOT/profiles/$n.env"
+      for kv in "${saved[@]+"${saved[@]}"}"; do export "${kv%%=*}=${kv#*=}"; done
+      printf "%s${FS}%s${FS}%s${FS}%s${FS}%s${FS}%s" "${VPN_NAME:-${n:-VPN}}" "${VPN_SERVER:-}" "${VPN_PROTOCOL:-}" \
+        "${VPN_AUTHGROUP:-}" "${VPN_USERAGENT:-}" "${VPN_USERNAME:-}"
+    )"
+    rows+=("$row")
+  done
+
+  # Validation. Les valeurs sont passées à PlistBuddy : ni guillemet, ni antislash, ni caractère de contrôle
+  # (le séparateur de champs ci-dessus est un caractère de contrôle).
+  local name server proto group agent user label
+  for i in "${!rows[@]}"; do
+    IFS="$FS" read -r name server proto group agent user <<< "${rows[$i]}"
+    label="${profile_names[$i]:-environnement}"
+    for v in "$name" "$server" "$proto" "$group" "$agent" "$user"; do
+      case "$v" in *\"*|*\\*) die "Profil « $label » : guillemets et antislash interdits (« $v »)." ;; esac
+      [[ "$v" != *[[:cntrl:]]* ]] || die "Profil « $label » : caractères de contrôle interdits."
+    done
+    [ -n "${name// /}" ] || die "Profil « $label » : VPN_NAME vide."
+    [ "${#name}" -le 60 ] || die "Profil « $label » : VPN_NAME trop long (60 caractères au plus)."
+    [ -n "$server$proto$group$agent$user" ] \
+      || die "Profil « $label » : rien à imposer. Renseignez au moins VPN_SERVER (voir profiles/example.env)."
+    [[ -z "$server" || "$server" == https://* ]] || die "Profil « $label » : VPN_SERVER doit commencer par https:// (valeur : $server)."
+    if [ -n "$proto" ]; then
+      [[ " $ids" == *" $proto "* ]] || die "Profil « $label » : VPN_PROTOCOL inconnu : « $proto ». Valeurs possibles : ${ids% }"
+    fi
+  done
+
+  local tag="${PROFILE//,/-}"
+  local out="$DIST/$APP_NAME${tag:+-$tag}.mobileconfig"
   local tmp; tmp="$(mktemp -d)"
-  local f="$tmp/profile.mobileconfig" pb="/usr/libexec/PlistBuddy"
-  local id="$BUNDLE_ID.config${PROFILE:+.$PROFILE}" label="${PROFILE:-generic}"
-  local base=":PayloadContent:0" settings=":PayloadContent:0:PayloadContent:$BUNDLE_ID:Forced:0:mcx_preference_settings"
+  local f="$tmp/profile.mobileconfig"
+  local id="$BUNDLE_ID.config${tag:+.$tag}" shown_label="${PROFILE:-generic}"
+  local base=":PayloadContent:0" cfgs=":PayloadContent:0:PayloadContent:$BUNDLE_ID:Forced:0:mcx_preference_settings:configurations"
 
   plutil -create xml1 "$f"
   # Une commande par appel : PlistBuddy plante (« Abort trap ») à partir de 15 arguments -c.
@@ -331,8 +385,8 @@ make_mobileconfig() {
   pbadd ":PayloadIdentifier string $id"
   pbadd ":PayloadUUID string $(uuidgen)"
   pbadd ":PayloadScope string System"
-  pbadd ":PayloadDisplayName string $APP_NAME ($label)"
-  pbadd ":PayloadDescription string Impose les réglages du serveur VPN dans $APP_NAME."
+  pbadd ":PayloadDisplayName string $APP_NAME ($shown_label)"
+  pbadd ":PayloadDescription string Apporte des configurations VPN en lecture seule à $APP_NAME."
   pbadd ":PayloadRemovalDisallowed bool false"
   pbadd ":PayloadContent array"
   pbadd "$base dict"
@@ -340,37 +394,49 @@ make_mobileconfig() {
   pbadd "$base:PayloadVersion integer 1"
   pbadd "$base:PayloadIdentifier string $id.settings"
   pbadd "$base:PayloadUUID string $(uuidgen)"
-  pbadd "$base:PayloadDisplayName string $APP_NAME : réglages du serveur"
+  pbadd "$base:PayloadDisplayName string $APP_NAME : configurations VPN"
   pbadd "$base:PayloadContent dict"
   pbadd "$base:PayloadContent:$BUNDLE_ID dict"
   pbadd "$base:PayloadContent:$BUNDLE_ID:Forced array"
   pbadd "$base:PayloadContent:$BUNDLE_ID:Forced:0 dict"
-  pbadd "$settings dict"
-  # Les noms de clés sont ceux lus par l'app (UserDefaults) ; un champ vide n'est pas imposé.
-  [ -n "$VPN_SERVER" ]    && pbadd "$settings:server string $VPN_SERVER"
-  [ -n "$VPN_PROTOCOL" ]  && pbadd "$settings:protocol string $VPN_PROTOCOL"
-  [ -n "$VPN_AUTHGROUP" ] && pbadd "$settings:authgroup string $VPN_AUTHGROUP"
-  [ -n "$VPN_USERAGENT" ] && pbadd "$settings:useragent string $VPN_USERAGENT"
+  pbadd "$base:PayloadContent:$BUNDLE_ID:Forced:0:mcx_preference_settings dict"
+  pbadd "$cfgs array"
+  # Les noms de clés sont ceux lus par l'app ; un champ vide n'est pas imposé (l'utilisateur le règle).
+  for i in "${!rows[@]}"; do
+    IFS="$FS" read -r name server proto group agent user <<< "${rows[$i]}"
+    pbadd "$cfgs:$i dict"
+    pbadd "$cfgs:$i:name string $name"
+    [ -n "$server" ] && pbadd "$cfgs:$i:server string $server"
+    [ -n "$proto" ]  && pbadd "$cfgs:$i:protocol string $proto"
+    [ -n "$group" ]  && pbadd "$cfgs:$i:authgroup string $group"
+    [ -n "$agent" ]  && pbadd "$cfgs:$i:useragent string $agent"
+    [ -n "$user" ]   && pbadd "$cfgs:$i:username string $user"
+  done
 
   plutil -lint "$f" >/dev/null || die "Profil généré invalide."
   mkdir -p "$DIST"
   cp "$f" "$out"
   rm -rf "$tmp"
   echo "✔ $out"
-  echo "  Domaine géré : $BUNDLE_ID"
-  local shown=""
-  [ -n "$VPN_SERVER" ]    && shown="server=$VPN_SERVER"
-  [ -n "$VPN_PROTOCOL" ]  && shown="${shown:+$shown | }protocol=$VPN_PROTOCOL"
-  [ -n "$VPN_AUTHGROUP" ] && shown="${shown:+$shown | }authgroup=$VPN_AUTHGROUP"
-  [ -n "$VPN_USERAGENT" ] && shown="${shown:+$shown | }useragent=$VPN_USERAGENT"
-  echo "  Imposé : $shown"
+  echo "  Domaine géré : $BUNDLE_ID (${#rows[@]} configuration(s))"
+  for i in "${!rows[@]}"; do
+    IFS="$FS" read -r name server proto group agent user <<< "${rows[$i]}"
+    local shown="${server:+server=$server}"
+    [ -n "$proto" ] && shown="${shown:+$shown | }protocol=$proto"
+    [ -n "$group" ] && shown="${shown:+$shown | }authgroup=$group"
+    [ -n "$agent" ] && shown="${shown:+$shown | }useragent=$agent"
+    [ -n "$user" ]  && shown="${shown:+$shown | }username=$user"
+    echo "  « $name » : $shown"
+  done
   echo "  Profil non signé : macOS l'affiche comme « non signé » à l'installation manuelle ; un MDM le signe lui-même."
 }
 
+
 case "${1:-build}" in
+  test)    run_tests ;;
   mobileconfig) make_mobileconfig ;;
   build)   build_app ;;
   install) build_app; install_app ;;
   pkg)     build_app; make_pkg ;;
-  *)       echo "Usage : $0 [build|install|pkg|mobileconfig]"; exit 2 ;;
+  *)       echo "Usage : $0 [build|install|pkg|test|mobileconfig]"; exit 2 ;;
 esac

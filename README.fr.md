@@ -9,7 +9,8 @@ Une app de barre de menus macOS qui se connecte à un VPN avec **[openconnect](h
 - Un petit assistant privilégié (un LaunchDaemon exécuté en root) fait le travail qui demande les droits administrateur, et ne répond qu'à l'app signée.
 - Icône de la barre de menus : cadenas fermé (connecté) · cadenas barré (déconnecté) · cadenas avec flèche circulaire (opération en cours).
 - Anglais et français, selon la langue du système.
-- Configurable par un profil de configuration macOS (installation manuelle ou MDM).
+- Plusieurs configurations (par exemple travail et perso), avec une connexion en un clic pour chacune.
+- Configurable par un profil de configuration macOS (installation manuelle ou MDM), qui peut apporter ses propres configurations.
 
 ## Sommaire
 
@@ -53,7 +54,7 @@ Téléchargez `OpenConnectMenu-<version>.pkg` depuis la page des [Releases](../.
 
 1. **Autoriser l'assistant.** Au premier lancement, l'app enregistre son assistant et macOS affiche une notification. Allez dans **Réglages Système → Général → Éléments de connexion et extensions** et activez l'assistant *OpenConnectMenu*. Le menu propose aussi *Ouvrir Éléments de connexion…*.
 2. **Approuver openconnect.** Le menu affiche « openconnect n'a pas encore été approuvé ». Cliquez sur **Approuver openconnect…**, vérifiez le chemin et la version, puis saisissez votre mot de passe administrateur. C'est le seul mot de passe administrateur qu'on vous demandera. Voir [Épinglage des binaires](#épinglage-des-binaires).
-3. **Renseigner les réglages.** Menu → **Réglages…** :
+3. **Renseigner les réglages.** Menu → **Réglages…**. La liste de gauche contient vos configurations (**+** et **−** pour en ajouter ou en retirer une ; une configuration apportée par un profil de configuration porte un cadenas et ne peut pas être retirée). Pour la configuration choisie :
 
 | Champ | Valeur |
 |---|---|
@@ -66,6 +67,8 @@ Téléchargez `OpenConnectMenu-<version>.pkg` depuis la page des [Releases](../.
 | Secret TOTP | Clé Base32 seule, `base32:…`, ou l'URL `otpauth://…` complète (stocké dans le Trousseau) |
 
 Le secret est normalisé : les espaces sont retirés, les lettres passées en majuscules, et le préfixe `base32:` ainsi que les URL `otpauth://` sont acceptés.
+
+Si vous utilisiez une version antérieure à la 2.0, vos réglages deviennent une configuration appelée **Par défaut**, avec le même mot de passe et le même secret TOTP : rien à ressaisir.
 
 ### Obtenir le secret TOTP
 
@@ -80,43 +83,55 @@ Ne collez jamais ce secret dans une conversation ou un terminal partagé : il é
 
 | Entrée du menu | Effet |
 |---|---|
-| Se connecter / Se déconnecter | Aucun mot de passe demandé. Une alerte signale un échec. |
+| Se connecter / Se déconnecter | Aucun mot de passe demandé. Une alerte signale un échec. Avec plusieurs configurations, le menu propose **Se connecter à <nom>** pour chacune ; tant qu'un VPN est connecté, seule **Se déconnecter** est proposée, avec le nom de la configuration. |
 | Adresse, Depuis | L'adresse IP du tunnel et la durée de connexion. |
 | openconnect n'est pas installé | Affiché avant tout autre état si `openconnect` est introuvable. **Copier la commande d'installation…** copie `brew install openconnect`. |
 | Assistant injoignable → Réparer l'assistant… | Affiché quand macOS indique que l'assistant est activé mais qu'il ne répond pas. Voir [Dépannage](#dépannage). |
-| Réglages… | La fenêtre des réglages. |
-| Voir le journal | Ouvre `/Library/Logs/OpenConnectMenu.log` (sortie d'openconnect, sans secret). |
-| Ouvrir au démarrage | Lance l'app à l'ouverture de session. |
-| Désinstaller l'assistant | Retire l'enregistrement de l'assistant. |
+| Réglages… | La fenêtre des réglages, avec deux onglets : **Configurations** (la liste et le formulaire) et **Général** (voir ci-dessous). |
 | Quitter | Quitte l'app. Un VPN connecté reste actif. |
+
+L'onglet **Général** des réglages regroupe les options qui ne concernent pas une configuration précise. Elles prennent effet tout de suite, sans **Enregistrer** :
+
+| Option | Effet |
+|---|---|
+| Ouvrir au démarrage | Lance l'app à l'ouverture de session. |
+| Assistant | Son état, avec **Activer l'assistant…** (ou **Ouvrir Éléments de connexion…** s'il attend votre approbation), **Réparer l'assistant…** quand il ne répond pas, et **Désinstaller l'assistant**. |
+| Voir le journal | Ouvre `/Library/Logs/OpenConnectMenu.log` (sortie d'openconnect, sans secret). |
+| Version | La version de l'app. |
+
+Le menu garde les entrées dont vous pouvez avoir besoin quand quelque chose ne va pas : activer l'assistant, approuver openconnect, réparer l'assistant, copier la commande d'installation.
 
 La connexion prend une dizaine de secondes ; la déconnexion, quelques secondes.
 
 ## Profil de configuration (MDM)
 
-Une organisation peut imposer les réglages du serveur avec un **profil de configuration macOS** (`.mobileconfig`), installé à la main ou déployé par un MDM. macOS range les valeurs dans le domaine de préférences de l'app (son identifiant de bundle), et l'app affiche les champs imposés grisés, avec une note.
+Une organisation peut apporter une ou plusieurs configurations VPN à chaque Mac avec un **profil de configuration macOS** (`.mobileconfig`), installé à la main ou déployé par un MDM. macOS range les valeurs dans le domaine de préférences de l'app (son identifiant de bundle). Dans l'app, ces configurations portent un cadenas et les champs que le profil impose sont grisés ; l'utilisateur saisit toujours son propre mot de passe et son secret TOTP. Une configuration de profil ne se modifie ni ne se supprime depuis l'app : retirez le profil dans Réglages Système.
 
-Clés imposables (toutes facultatives, de type chaîne) :
+Le profil impose la clé `configurations`, un tableau de dictionnaires. Toutes les clés sauf `name` sont facultatives (chaînes) ; un champ absent ou vide est laissé à l'utilisateur.
 
 | Clé | Signification |
 |---|---|
+| `name` | Nom affiché dans l'app (obligatoire, 60 caractères au plus) |
 | `server` | Adresse du VPN, `https://…` |
 | `protocol` | `anyconnect`, `nc`, `gp`, `pulse`, `f5`, `fortinet` ou `array` |
 | `authgroup` | Groupe d'authentification |
 | `useragent` | User-Agent |
-| `username` | Identifiant |
+| `username` | Identifiant (à omettre, sauf s'il est le même pour tout le monde) |
 
 Le mot de passe et le secret TOTP ne sont jamais imposés : ils sont personnels et restent dans le Trousseau de chacun.
 
-**Générer un profil.** `build.sh` impose `server`, `protocol`, `authgroup` et `useragent` (renseignez `VPN_SERVER`, `VPN_PROTOCOL`, `VPN_AUTHGROUP`, `VPN_USERAGENT` ; un champ laissé vide n'est pas imposé). Créez `profiles/<nom>.env` à partir de [`profiles/example.env`](profiles/example.env), puis :
+**Générer un profil.** Créez `profiles/<nom>.env` à partir de [`profiles/example.env`](profiles/example.env) (`VPN_NAME`, `VPN_SERVER`, `VPN_PROTOCOL`, `VPN_AUTHGROUP`, `VPN_USERAGENT`, `VPN_USERNAME` ; un champ laissé vide n'est pas imposé), puis :
 
 ```bash
-PROFILE=<nom> ./build.sh mobileconfig      # → dist/OpenConnectMenu-<nom>.mobileconfig
+PROFILE=<nom> ./build.sh mobileconfig            # une configuration → dist/OpenConnectMenu-<nom>.mobileconfig
+PROFILE=travail,labo ./build.sh mobileconfig     # un seul profil qui apporte deux configurations
 ```
 
-Le profil est de portée système, avec le type de payload `com.apple.ManagedClient.preferences`. Il n'est **pas signé** : macOS le signale à l'installation manuelle, et un MDM le re-signe. Les profils de `profiles/` autres que l'exemple sont ignorés par git.
+Chaque fichier de profil donne une configuration ; ils sont lus séparément, donc aucune valeur ne passe de l'un à l'autre. Une variable `VPN_*` de l'environnement prime sur les fichiers. Le profil est de portée système, avec le type de payload `com.apple.ManagedClient.preferences`. Il n'est **pas signé** : macOS le signale à l'installation manuelle, et un MDM le re-signe. Les profils de `profiles/` autres que l'exemple sont ignorés par git.
 
-Pour imposer aussi `username`, ou pour écrire le profil à la main ou dans un MDM, utilisez un payload *Custom Settings* / `com.apple.ManagedClient.preferences` dont le domaine est l'identifiant de bundle de l'app et dont les réglages forcés sont les clés ci-dessus.
+Pour écrire le profil à la main ou dans un MDM, utilisez un payload *Custom Settings* / `com.apple.ManagedClient.preferences` dont le domaine est l'identifiant de bundle de l'app et dont les réglages forcés contiennent le tableau `configurations` ci-dessus.
+
+**Les profils de la version 1.x** imposaient des clés « plates » (`server`, `protocol`, `authgroup`, `useragent`, `username`). Ils continuent de fonctionner : les champs imposés s'appliquent à la configuration appelée *Par défaut* (celle d'avant), grisés comme auparavant.
 
 Vérifier ce que macOS a appliqué (le fichier n'existe que tant que le profil est installé) :
 
@@ -192,6 +207,7 @@ Toute variable peut aussi être passée par l'environnement, qui prime sur le fi
 ./build.sh install      # idem, puis installe dans /Applications et lance l'app
 ./build.sh pkg          # idem, puis fabrique un .pkg signé dans dist/
 ./build.sh mobileconfig # profil de configuration, voir plus haut
+./build.sh test        # tests unitaires de la logique des configurations (sans certificat)
 ```
 
 | Sujet | Explication |
@@ -279,7 +295,7 @@ tail -n 30 /Library/Logs/OpenConnectMenu.log           # journal
 
 ## Désinstallation
 
-Avec Homebrew : choisissez d'abord **Désinstaller l'assistant** dans le menu (pour que macOS oublie aussi l'élément d'arrière-plan), puis :
+Avec Homebrew : cliquez d'abord sur **Désinstaller l'assistant** dans **Réglages… → Général** (pour que macOS oublie aussi l'élément d'arrière-plan), puis :
 
 ```bash
 brew uninstall --cask openconnectmenu          # ajoutez --zap pour supprimer aussi réglages et journaux
@@ -287,15 +303,14 @@ brew uninstall --cask openconnectmenu          # ajoutez --zap pour supprimer au
 
 À la main :
 
-1. Menu → **Désinstaller l'assistant**, puis **Quitter**.
+1. **Réglages… → Général → Désinstaller l'assistant**, puis menu → **Quitter**.
 2. `rm -rf /Applications/OpenConnectMenu.app`
 3. Nettoyage facultatif (`<bundle-id>` est l'identifiant de votre build ; la version officielle utilise `ch.jeko.OpenConnectMenu`) :
 
    ```bash
    sudo rm -rf "/Library/Application Support/OpenConnectMenu" /Library/Logs/OpenConnectMenu.log
    defaults delete <bundle-id>
-   security delete-generic-password -s <bundle-id> -a password
-   security delete-generic-password -s <bundle-id> -a totp
+   while security delete-generic-password -s <bundle-id> >/dev/null 2>&1; do :; done   # tous les mots de passe et secrets TOTP, un par configuration
    ```
 
 ## Organisation du projet
@@ -311,7 +326,8 @@ brew uninstall --cask openconnectmenu          # ajoutez --zap pour supprimer au
 ├── pkg-resources/         Écran d'accueil et textes de l'installateur (en, fr, repli anglais)
 ├── pkg-distribution.xml.in
 ├── Shared/Shared.swift    Constantes, exigences de signature, types et protocole XPC
-├── App/                   App de barre de menus : menu, client XPC, réglages, traductions
+├── Tests/                 Tests unitaires de la logique des configurations (./build.sh test)
+├── App/                   App de barre de menus : menu, client XPC, configurations (ConfigModel, ConfigStore), réglages, traductions
 └── Helper/                Assistant privilégié : écoute XPC, validation des demandes, connexion/déconnexion, épinglage SHA-256
 ```
 
@@ -335,7 +351,7 @@ Les identifiants (`@BUNDLE_ID@`, `@HELPER_LABEL@`, `@PKG_ID@`, `@TEAM_ID@`) sont
   2. sinon, exécution de `vpnc-script` avec `reason=disconnect` pour restaurer la route par défaut et le DNS sauvegardés, puis `SIGKILL` du processus ;
   3. suppression des routes d'exclusion ajoutées par la passerelle d'origine.
 - **Nettoyage manuel** : si l'assistant est interrompu en plein nettoyage, des routes d'exclusion ou des réglages DNS peuvent rester en place. Couper puis rallumer le réseau remet tout à zéro.
-- **Un seul VPN à la fois** : la détection du tunnel suppose qu'aucune autre interface `utun` n'a une adresse IPv4 point à point pointant sur elle-même.
+- **Un seul VPN à la fois** : la détection du tunnel suppose qu'aucune autre interface `utun` n'a une adresse IPv4 point à point pointant sur elle-même. Pour la même raison, l'app ne passe pas d'une configuration à une autre : déconnectez-vous d'abord.
 - **Seul AnyConnect est testé.** Le réglage de protocole propose les sept protocoles d'openconnect, et l'assistant vérifie qu'openconnect les accepte, mais aucune connexion n'a été essayée avec autre chose qu'un serveur AnyConnect. Le déroulement de l'authentification et le sens du « groupe d'authentification » diffèrent selon les protocoles : attendez-vous à des aspérités, et signalez-les.
 - **Le TOTP est obligatoire** : l'assistant configure toujours openconnect avec un jeton TOTP. Les autres seconds facteurs ne sont pas gérés.
 - **Homebrew uniquement** : `openconnect` est cherché dans `/opt/homebrew` (Apple silicon), puis `/usr/local` (Intel).

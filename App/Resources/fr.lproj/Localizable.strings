@@ -76,3 +76,26 @@
 "Repairing helper…" = "Réparation de l'assistant…";
 "Helper repair: %@" = "Réparation de l'assistant : %@";
 "Could not repair the helper" = "Réparation impossible";
+
+/* Plusieurs configurations */
+"Connect to %@" = "Se connecter à %@";
+"VPN: connected to %@" = "VPN : connecté à %@";
+"Configuration" = "Configuration";
+"Name" = "Nom";
+"Default" = "Par défaut";
+"New configuration" = "Nouvelle configuration";
+"Managed by a configuration profile" = "Imposée par un profil de configuration";
+"Add a configuration" = "Ajouter une configuration";
+"Remove the configuration" = "Supprimer la configuration";
+"No configuration. Click + to add one." = "Aucune configuration. Cliquez sur + pour en ajouter une.";
+
+/* Onglet Général des réglages */
+"Configurations" = "Configurations";
+"General" = "Général";
+"Application" = "Application";
+"Helper" = "Assistant";
+"Log" = "Journal";
+"Status" = "État";
+"Version" = "Version";
+"Helper enabled" = "Assistant activé";
+"The helper runs as administrator to start and stop the VPN, so that you are not asked for a password each time." = "L'assistant s'exécute en administrateur pour démarrer et arrêter le VPN, afin qu'aucun mot de passe ne vous soit demandé à chaque fois.";

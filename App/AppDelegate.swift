@@ -12,7 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var busy: String?
     private var lastError: String?
     private var timer: Timer?
-    private var settingsWindow: NSWindow?
+    private lazy var settingsWindow = SettingsWindowController(general: makeGeneralActions())
 
     // Helper enregistré mais injoignable (après un crash, une mise à jour, une panne du service système…)
     private var unreachableCount = 0
@@ -167,7 +167,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 add(L("Approve openconnect…"), #selector(approveTrust))
             }
         } else if let s = status, s.connected {
-            add(L("VPN: connected"))
+            // Avec plusieurs configurations, on indique laquelle est connectée.
+            let store = ConfigStore.shared
+            if store.configs().count > 1, let id = store.activeID, let name = store.config(id: id)?.name {
+                add(L("VPN: connected to %@", name))
+            } else {
+                add(L("VPN: connected"))
+            }
             add(L("Address: %@", s.tunnelIP), nil)
             add(L("Since: %@", format(uptime: s.uptime)), nil)
             menu.addItem(.separator())
@@ -175,7 +181,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             add(L("VPN: disconnected"))
             menu.addItem(.separator())
-            add(L("Connect"), #selector(connect))
+            // Une entrée par configuration ; avec une seule (ou aucune : on ouvre alors les réglages), « Se connecter ».
+            let usable = ConfigStore.shared.menuConfigs()
+            if usable.count > 1 {
+                for c in usable {
+                    add(L("Connect to %@", c.name), #selector(connectConfig(_:))).representedObject = c.id
+                }
+            } else {
+                add(L("Connect"), #selector(connectConfig(_:))).representedObject = usable.first?.id
+            }
         }
 
         if let lastError, busy == nil {
@@ -185,12 +199,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
         add(L("Settings…"), #selector(openSettings))
-        add(L("Show log"), #selector(openLog))
-        let login = add(L("Open at login"), #selector(toggleLoginItem))
-        login.state = SMAppService.mainApp.status == .enabled ? .on : .off
-        if helperState != .notRegistered && helperState != .notFound {
-            add(L("Uninstall helper"), #selector(uninstallHelper))
-        }
         menu.addItem(.separator())
         add(L("Quit"), #selector(NSApplication.terminate(_:)))
         menu.items.last?.target = NSApp
@@ -206,11 +214,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Actions
 
-    @objc private func connect() {
-        guard let request = SettingsStore.makeRequest() else {
-            openSettings()
+    @objc private func connectConfig(_ sender: NSMenuItem) {
+        let id = sender.representedObject as? String
+        guard let id, let request = ConfigStore.shared.request(for: id) else {
+            showSettings(selecting: id)   // il manque quelque chose : on ouvre les réglages sur cette configuration
             return
         }
+        ConfigStore.shared.activeID = id
         lastError = nil
         busy = L("Connecting…")
         updateIcon()
@@ -287,7 +297,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Task { @MainActor in await repairHelper(automatic: false) }
     }
 
-    @objc private func uninstallHelper() {
+    private func uninstallHelper() {
         client.quit()
         do { try helperService.unregister() } catch { alert(L("Could not uninstall the helper"), error.localizedDescription) }
         status = nil
@@ -295,34 +305,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateIcon()
     }
 
-    @objc private func toggleLoginItem() {
+    private func setLoginItem(_ on: Bool) {
         let s = SMAppService.mainApp
-        do { if s.status == .enabled { try s.unregister() } else { try s.register() } }
+        do { if on { try s.register() } else { try s.unregister() } }
         catch { alert(L("Could not change the login item"), error.localizedDescription) }
     }
 
-    @objc private func openLog() {
+    private func showLog() {
         NSWorkspace.shared.open(URL(fileURLWithPath: Constants.logPath))
     }
 
-    @objc private func openSettings() {
-        if let w = settingsWindow {
-            NSApp.activate(ignoringOtherApps: true)
-            w.makeKeyAndOrderFront(nil)
-            return
-        }
-        let view = SettingsView { [weak self] in
-            self?.settingsWindow?.close()
-            self?.settingsWindow = nil
-        }
-        let w = NSWindow(contentViewController: NSHostingController(rootView: view))
-        w.title = L("VPN Settings")
-        w.styleMask = [.titled, .closable]
-        w.isReleasedWhenClosed = false
-        w.center()
-        settingsWindow = w
-        NSApp.activate(ignoringOtherApps: true)
-        w.makeKeyAndOrderFront(nil)
+    /// Ce que l'onglet « Général » des réglages lit et déclenche : les anciennes entrées du menu.
+    private func makeGeneralActions() -> GeneralActions {
+        GeneralActions(
+            helperState: { [weak self] in
+                guard let self else { return .notEnabled }
+                switch self.helperService.status {
+                case .enabled: return self.helperUnreachable ? .unreachable : .enabled
+                case .requiresApproval: return .requiresApproval
+                default: return .notEnabled
+                }
+            },
+            enableHelper: { [weak self] in self?.activateHelper() },
+            repairHelper: { [weak self] in self?.repairHelperAction() },
+            uninstallHelper: { [weak self] in self?.uninstallHelper() },
+            isLoginItemEnabled: { SMAppService.mainApp.status == .enabled },
+            setLoginItem: { [weak self] in self?.setLoginItem($0) },
+            showLog: { [weak self] in self?.showLog() },
+            version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?")
+    }
+
+    @objc private func openSettings() { showSettings(selecting: nil) }
+
+    private func showSettings(selecting id: String?) {
+        settingsWindow.show(selecting: id)
     }
 
     private func alert(_ title: String, _ text: String) {
