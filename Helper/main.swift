@@ -1,6 +1,6 @@
 import Foundation
 
-/// Point d'entrée du helper privilégié (LaunchDaemon lancé à la demande par launchd).
+/// Entry point of the privileged helper (LaunchDaemon started on demand by launchd).
 final class ListenerDelegate: NSObject, NSXPCListenerDelegate {
     func listener(_ listener: NSXPCListener, shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
         connection.exportedInterface = NSXPCInterface(with: HelperProtocol.self)
@@ -13,7 +13,7 @@ final class ListenerDelegate: NSObject, NSXPCListenerDelegate {
 let service = Service()
 let delegate = ListenerDelegate()
 let listener = NSXPCListener(machServiceName: Constants.helperLabel)
-// Seule l'app signée par notre équipe peut parler au helper.
+// Only the app signed by our team can talk to the helper.
 listener.setConnectionCodeSigningRequirement(Constants.appRequirement)
 listener.delegate = delegate
 listener.resume()

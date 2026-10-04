@@ -1,10 +1,10 @@
 import AppKit
 import SwiftUI
 
-/// La fenêtre des réglages. Une seule à la fois. Une fois fermée (pastille rouge, Enregistrer ou Annuler) elle est
-/// abandonnée et la suivante est recréée : les réglages sont relus à chaque ouverture. Sans cela, la fenêtre fermée
-/// puis rouverte réaffichait l'état du premier affichage, par exemple sans la configuration d'un profil installé
-/// entre-temps.
+/// The settings window. Only one at a time. Once closed (red button, Save or Cancel) it is
+/// discarded and the next one is recreated: the settings are re-read on every open. Without this, the window, once closed
+/// and reopened, showed the state of its first display, for example without the configuration of a profile installed
+/// in the meantime.
 final class SettingsWindowController: NSObject, NSWindowDelegate {
     private(set) var window: NSWindow?
     private let general: GeneralActions?
@@ -13,9 +13,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         self.general = general
     }
 
-    /// Ouvre les réglages, sur la configuration `id` si elle est donnée.
-    /// Une fenêtre déjà ouverte est simplement ramenée devant (pour ne pas perdre une saisie en cours), sauf si l'on
-    /// demande une configuration précise : elle est alors recréée.
+    /// Opens the settings, on configuration `id` if given.
+    /// A window that is already open is simply brought to the front (so as not to lose input in progress), unless a
+    /// specific configuration is requested: it is then recreated.
     func show(store: ConfigStore = .shared, selecting id: String? = nil) {
         if let w = window, w.isVisible, id == nil {
             NSApp.activate(ignoringOtherApps: true)

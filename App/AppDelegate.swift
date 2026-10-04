@@ -14,13 +14,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var timer: Timer?
     private lazy var settingsWindow = SettingsWindowController(general: makeGeneralActions())
 
-    // Helper enregistré mais injoignable (après un crash, une mise à jour, une panne du service système…)
+    // Helper registered but unreachable (after a crash, an update, a failure of the system service…)
     private var unreachableCount = 0
     private var helperUnreachable = false
     private var repairAttempted = false
     private var repairing = false
 
-    // MARK: - Cycle de vie
+    // MARK: - Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let menu = NSMenu()
@@ -39,13 +39,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// Si un ancien helper tourne encore après une mise à jour, on le relance.
+    /// If an old helper is still running after an update, we restart it.
     private func checkHelperVersion() async {
         guard helperService.status == .enabled, let v = await client.version(), v != buildStamp else { return }
         client.quit()
     }
 
-    // MARK: - État
+    // MARK: - State
 
     private func refresh() {
         updateIcon()
@@ -68,8 +68,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// Le service est « activé » pour macOS mais ne répond pas. On attend quelques relevés (≈ 15 s) avant
-    /// de conclure : le helper est lancé à la demande et peut être lent à répondre (réveil de veille…).
+    /// The service is "enabled" as far as macOS is concerned but does not answer. We wait for a few polls (≈ 15 s) before
+    /// concluding: the helper is started on demand and can be slow to answer (wake from sleep…).
     private func noteUnreachable() {
         guard busy == nil, !repairing else { return }
         unreachableCount += 1
@@ -77,16 +77,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         helperUnreachable = true
         let vpnWasUp = status?.connected == true
         status = nil
-        // Réparation automatique, une seule fois, sauf si un VPN était actif : la réparation le
-        // couperait. Dans ce cas, l'entrée de menu « Repair helper… » reste disponible.
+        // Automatic repair, only once, unless a VPN was up: the repair would
+        // cut it. In that case the "Repair helper…" menu item remains available.
         if !repairAttempted && !vpnWasUp {
             repairAttempted = true
             Task { @MainActor in await repairHelper(automatic: true) }
         }
     }
 
-    /// Réenregistre le helper (désinscription puis inscription), sans privilège : relance le service
-    /// auprès de launchd et remplace un ancien processus. L'approbation de l'utilisateur est conservée.
+    /// Re-registers the helper (unregister then register), without privileges: restarts the service
+    /// with launchd and replaces an old process. The user's approval is kept.
     @MainActor
     private func repairHelper(automatic: Bool) async {
         guard !repairing else { return }
@@ -94,7 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         busy = L("Repairing helper…")
         updateIcon()
         client.reset()
-        try? await helperService.unregister()   // peut échouer si launchd l'a déjà retiré : sans importance
+        try? await helperService.unregister()   // may fail if launchd already removed it: harmless
         try? await Task.sleep(nanoseconds: 1_500_000_000)
         var failure: String?
         do { try helperService.register() } catch { failure = error.localizedDescription }
@@ -141,7 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let busy {
             add(busy)
         } else if !Homebrew.openConnectInstalled {
-            // Détecté côté app, avant même l'autorisation de l'assistant.
+            // Detected on the app side, even before the helper is authorized.
             add(L("openconnect is not installed"))
             menu.addItem(.separator())
             add(L("Copy install command…"), #selector(showInstallCommand))
@@ -161,13 +161,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             add(HelperText.localized(trust.code))
             menu.addItem(.separator())
             if trust.openconnectPath.isEmpty {
-                // Rien à approuver : openconnect (ou son vpnc-script) est introuvable.
+                // Nothing to approve: openconnect (or its vpnc-script) cannot be found.
                 add(L("Copy install command…"), #selector(showInstallCommand))
             } else {
                 add(L("Approve openconnect…"), #selector(approveTrust))
             }
         } else if let s = status, s.connected {
-            // Avec plusieurs configurations, on indique laquelle est connectée.
+            // With several configurations, we show which one is connected.
             let store = ConfigStore.shared
             if store.configs().count > 1, let id = store.activeID, let name = store.config(id: id)?.name {
                 add(L("VPN: connected to %@", name))
@@ -181,7 +181,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             add(L("VPN: disconnected"))
             menu.addItem(.separator())
-            // Une entrée par configuration ; avec une seule (ou aucune : on ouvre alors les réglages), « Se connecter ».
+            // One item per configuration; with a single one (or none: the settings then open), "Connect".
             let usable = ConfigStore.shared.menuConfigs()
             if usable.count > 1 {
                 for c in usable {
@@ -217,7 +217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func connectConfig(_ sender: NSMenuItem) {
         let id = sender.representedObject as? String
         guard let id, let request = ConfigStore.shared.request(for: id) else {
-            showSettings(selecting: id)   // il manque quelque chose : on ouvre les réglages sur cette configuration
+            showSettings(selecting: id)   // something is missing: we open the settings on this configuration
             return
         }
         ConfigStore.shared.activeID = id
@@ -315,7 +315,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSWorkspace.shared.open(URL(fileURLWithPath: Constants.logPath))
     }
 
-    /// Ce que l'onglet « Général » des réglages lit et déclenche : les anciennes entrées du menu.
+    /// What the settings' "General" tab reads and triggers: the former menu items.
     private func makeGeneralActions() -> GeneralActions {
         GeneralActions(
             helperState: { [weak self] in

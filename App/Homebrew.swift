@@ -1,6 +1,6 @@
 import Foundation
 
-/// Détection côté app d'openconnect et de Homebrew (mêmes emplacements que le helper).
+/// App-side detection of openconnect and Homebrew (same locations as the helper).
 enum Homebrew {
     static let installCommand = "brew install openconnect"
     static let website = "https://brew.sh"

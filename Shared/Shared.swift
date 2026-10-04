@@ -1,6 +1,6 @@
 import Foundation
 
-/// Constantes et protocole XPC partagés entre l'app et le helper privilégié.
+/// Constants and XPC protocol shared between the app and the privileged helper.
 enum Constants {
     static let appBundleID = BuildConfig.bundleID
     static let helperLabel = BuildConfig.bundleID + ".helper"
@@ -8,19 +8,19 @@ enum Constants {
     static let teamID = BuildConfig.teamID
     static let logPath = "/Library/Logs/OpenConnectMenu.log"
 
-    /// Le helper n'accepte que les connexions de l'app signée par cette équipe.
+    /// The helper only accepts connections from the app signed by this team.
     static var appRequirement: String {
         "anchor apple generic and identifier \"\(appBundleID)\" and certificate leaf[subject.OU] = \"\(teamID)\""
     }
 
-    /// L'app ne parle qu'au helper signé par cette équipe.
+    /// The app only talks to the helper signed by this team.
     static var helperRequirement: String {
         "anchor apple generic and identifier \"\(helperLabel)\" and certificate leaf[subject.OU] = \"\(teamID)\""
     }
 }
 
-/// Protocoles gérés par openconnect (option --protocol). Liste unique : l'app s'en sert pour le menu des
-/// réglages, le helper pour n'accepter que ces valeurs, et build.sh pour valider un profil de configuration.
+/// Protocols handled by openconnect (--protocol option). Single list: the app uses it for the settings
+/// menu, the helper to accept only these values, and build.sh to validate a configuration profile.
 struct VPNProtocol {
     let id: String
     let label: String
@@ -41,7 +41,7 @@ extension Constants {
 
 struct ConnectRequest: Codable {
     var server: String
-    var vpnProtocol: String?   // absent chez une ancienne app : AnyConnect
+    var vpnProtocol: String?   // absent from an old app: AnyConnect
     var authgroup: String
     var useragent: String
     var username: String
@@ -60,15 +60,15 @@ struct VPNStatus: Codable {
 
 struct TrustInfo: Codable {
     var trusted: Bool
-    /// Code stable (oc_missing, oc_not_approved, oc_changed, oc_trusted), traduit par l'app.
+    /// Stable code (oc_missing, oc_not_approved, oc_changed, oc_trusted), translated by the app.
     var code: String
     var openconnectPath: String
     var version: String
 }
 
-/// Les réponses du helper sont des codes (« oc_exited », « timeout »…), éventuellement suivis d'un détail
-/// sur les lignes suivantes. Le helper tourne en root : il ne connaît pas la langue de l'utilisateur,
-/// c'est l'app qui traduit.
+/// The helper's replies are codes ("oc_exited", "timeout"…), optionally followed by a detail
+/// on the following lines. The helper runs as root: it does not know the user's language,
+/// so the app does the translating.
 @objc(HelperProtocol)
 protocol HelperProtocol {
     func version(reply: @escaping (String) -> Void)

@@ -1,13 +1,13 @@
 import Foundation
 import Darwin
 
-/// Implémentation du protocole XPC, exécutée en root par le helper.
+/// Implementation of the XPC protocol, run as root by the helper.
 final class Service: NSObject, HelperProtocol {
     private let queue = DispatchQueue(label: "openconnectmenu.ops")
     private let runDir = "/var/run/openconnectmenu"
     private var child: Process?
 
-    // MARK: - Informations
+    // MARK: - Information
 
     func version(reply: @escaping (String) -> Void) { reply(buildStamp) }
 
@@ -58,7 +58,7 @@ final class Service: NSObject, HelperProtocol {
 
         if Sys.openConnectPID() != nil { return (true, "already_connected") }
 
-        // Configuration temporaire réservée à root (elle contient le secret TOTP).
+        // Temporary configuration readable by root only (it contains the TOTP secret).
         let fm = FileManager.default
         do {
             try fm.createDirectory(atPath: runDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -69,7 +69,7 @@ final class Service: NSObject, HelperProtocol {
         }
         defer { try? fm.removeItem(atPath: confPath) }
 
-        // Journal lisible par l'utilisateur (aucun secret n'y est écrit par openconnect).
+        // Log readable by the user (openconnect writes no secret to it).
         fm.createFile(atPath: Constants.logPath, contents: nil, attributes: [.posixPermissions: 0o644])
         guard let log = FileHandle(forWritingAtPath: Constants.logPath) else { return (false, "log_unavailable") }
         try? log.truncate(atOffset: 0)
@@ -87,7 +87,7 @@ final class Service: NSObject, HelperProtocol {
         stdin.fileHandleForWriting.write(Data((req.password + "\n").utf8))
         try? stdin.fileHandleForWriting.close()
 
-        // Attente de l'établissement du tunnel (40 s max).
+        // Wait for the tunnel to come up (40 s max).
         let deadline = Date().addingTimeInterval(40)
         while Date() < deadline {
             if Sys.tunnel() != nil, Sys.openConnectPID() != nil { return (true, "connected") }
@@ -100,7 +100,7 @@ final class Service: NSObject, HelperProtocol {
         return (false, "timeout\n\(Sys.tail(Constants.logPath))")
     }
 
-    // MARK: - Déconnexion
+    // MARK: - Disconnection
 
     func disconnect(reply: @escaping (Bool, String) -> Void) {
         queue.async {
@@ -118,9 +118,9 @@ final class Service: NSObject, HelperProtocol {
         return false
     }
 
-    /// openconnect 9.21 sous macOS 27 (bêta) ne réagit à aucun signal : on tente SIGTERM,
-    /// puis on rejoue à la main le nettoyage du vpnc-script (route par défaut, DNS)
-    /// avant de forcer l'arrêt et de retirer les routes d'exclusion.
+    /// openconnect 9.21 on macOS 27 (beta) does not react to any signal: we try SIGTERM,
+    /// then replay the vpnc-script cleanup by hand (default route, DNS)
+    /// before forcing the stop and removing the exclusion routes.
     private func doDisconnect() -> (Bool, String) {
         guard let pid = Sys.openConnectPID() else { return (true, "disconnected") }
         let tun = Sys.tunnel()
@@ -132,11 +132,11 @@ final class Service: NSObject, HelperProtocol {
             return (false, "disconnect_unresponsive")
         }
 
-        // Passerelle d'origine sauvegardée par le vpnc-script.
+        // Original gateway saved by the vpnc-script.
         let gw = (try? String(contentsOfFile: "/var/run/vpnc/defaultroute.\(pid)", encoding: .utf8))?
             .split(separator: " ").first.map(String.init) ?? ""
 
-        // Routes d'exclusion (Microsoft, Zoom…) ajoutées via l'ancienne passerelle.
+        // Exclusion routes (Microsoft, Zoom…) added through the old gateway.
         var routes: [(kind: String, dest: String)] = []
         if !gw.isEmpty {
             for line in Sys.run("/usr/sbin/netstat", ["-rn", "-f", "inet"]).output.split(separator: "\n") {
@@ -146,7 +146,7 @@ final class Service: NSObject, HelperProtocol {
             }
         }
 
-        // DNS installés par le script sur l'interface du tunnel.
+        // DNS entries installed by the script on the tunnel interface.
         let scutil = Sys.run("/usr/sbin/scutil", [], input: "show State:/Network/Service/\(tun.name)/DNS\n").output
         var dns: [String] = []
         for token in scutil.split(whereSeparator: { !($0.isNumber || $0 == ".") }) {

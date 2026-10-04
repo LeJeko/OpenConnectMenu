@@ -1,8 +1,8 @@
 import Foundation
 
-// Localisation : l'anglais est la langue par défaut, le français est utilisé si le système est en français.
-// Les clés de Localizable.strings sont les textes anglais eux-mêmes ; macOS choisit la traduction
-// d'après les langues préférées de l'utilisateur parmi celles déclarées dans CFBundleLocalizations.
+// Localization: English is the default language; French is used when the system is in French.
+// The keys of Localizable.strings are the English texts themselves; macOS picks the translation
+// from the user's preferred languages, among those declared in CFBundleLocalizations.
 
 func L(_ key: String) -> String {
     NSLocalizedString(key, comment: "")
@@ -12,8 +12,8 @@ func L(_ key: String, _ args: CVarArg...) -> String {
     String(format: NSLocalizedString(key, comment: ""), arguments: args)
 }
 
-/// Traduit les réponses du helper : un code (« oc_exited »…), suivi éventuellement d'un détail
-/// (sortie d'openconnect, message système) sur les lignes suivantes, laissé tel quel.
+/// Translates the helper's replies: a code ("oc_exited"…), optionally followed by a detail
+/// (openconnect output, system message) on the following lines, left as is.
 enum HelperText {
     static func localized(_ raw: String) -> String {
         let parts = raw.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
@@ -42,7 +42,7 @@ enum HelperText {
         case "connected", "already_connected": text = L("Connected.")
         case "disconnected":            text = L("Disconnected.")
         case "approved":                text = L("openconnect approved.")
-        default: return raw   // message inconnu (ancien helper) : affiché tel quel
+        default: return raw   // unknown message (old helper): shown as is
         }
         return detail.isEmpty ? text : text + "\n" + detail
     }

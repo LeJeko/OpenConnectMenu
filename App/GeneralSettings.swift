@@ -1,16 +1,16 @@
 import SwiftUI
 import Combine
 
-/// État de l'assistant (le helper), tel qu'affiché dans les réglages.
+/// State of the helper, as shown in the settings.
 enum HelperDisplayState {
     case enabled, unreachable, requiresApproval, notEnabled
 }
 
-/// Ce que l'onglet « Général » lit et fait. L'app le branche sur ses vraies actions ; les essais en fournissent de
-/// fausses. Chaque action prend effet tout de suite : elle ne passe pas par Enregistrer / Annuler.
+/// What the "General" tab reads and does. The app wires it to its real actions; the tests supply fake
+/// ones. Every action takes effect immediately: it does not go through Save / Cancel.
 struct GeneralActions {
     var helperState: () -> HelperDisplayState
-    /// Active l'assistant, ou ouvre Réglages Système s'il attend l'approbation de l'utilisateur.
+    /// Enables the helper, or opens System Settings if it is waiting for the user's approval.
     var enableHelper: () -> Void
     var repairHelper: () -> Void
     var uninstallHelper: () -> Void
@@ -23,14 +23,14 @@ struct GeneralActions {
 struct GeneralSettingsView: View {
     let actions: GeneralActions
 
-    /// Les états changent hors de la fenêtre (assistant qui se répare, élément de connexion modifié dans Réglages
-    /// Système…) : on relit toutes les secondes, et après chaque action.
+    /// States change outside the window (helper repairing itself, login item changed in System
+    /// Settings…): we re-read every second, and after each action.
     @State private var tick = 0
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        let _ = tick                         // dépendance : un changement de `tick` réévalue la vue
-        let state = actions.helperState()    // relu à chaque rafraîchissement
+        let _ = tick                         // dependency: a change of `tick` re-evaluates the view
+        let state = actions.helperState()    // re-read on every refresh
         Form {
             Section("Application") {
                 Toggle("Open at login", isOn: Binding(

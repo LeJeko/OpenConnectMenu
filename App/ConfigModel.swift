@@ -1,7 +1,7 @@
 import Foundation
 
-/// Champs d'une configuration qu'un profil de configuration macOS peut imposer.
-/// La valeur brute est le nom de la clé dans le profil (et dans UserDefaults pour les clés « plates » historiques).
+/// Fields of a configuration that a macOS configuration profile can enforce.
+/// The raw value is the key name in the profile (and in UserDefaults for the historical "flat" keys).
 enum ConfigField: String, CaseIterable {
     case server
     case vpnProtocol = "protocol"
@@ -10,8 +10,8 @@ enum ConfigField: String, CaseIterable {
     case username
 }
 
-/// Une configuration VPN. Le mot de passe et le secret TOTP n'en font pas partie : ils vivent dans le Trousseau,
-/// sous un compte propre à chaque configuration (voir ConfigStore.account).
+/// A VPN configuration. The password and the TOTP secret are not part of it: they live in the Keychain,
+/// under an account specific to each configuration (see ConfigStore.account).
 struct VPNConfig: Codable, Equatable, Identifiable {
     var id: String
     var name: String
@@ -21,17 +21,17 @@ struct VPNConfig: Codable, Equatable, Identifiable {
     var useragent = ""
     var username = ""
 
-    // Non enregistrés : déterminés à chaque lecture.
-    /// Configuration apportée par un profil de configuration (lecture seule, non supprimable).
+    // Not stored: determined on every read.
+    /// Configuration supplied by a configuration profile (read-only, cannot be deleted).
     var managed = false
-    /// Champs imposés par un profil : affichés grisés, jamais réécrits.
+    /// Fields enforced by a profile: shown greyed out, never rewritten.
     var locked: Set<ConfigField> = []
 
     enum CodingKeys: String, CodingKey { case id, name, server, vpnProtocol, authgroup, useragent, username }
 
     func isLocked(_ f: ConfigField) -> Bool { locked.contains(f) }
 
-    /// Une configuration sans serveur n'est pas proposée dans le menu.
+    /// A configuration without a server is not offered in the menu.
     var isUsable: Bool { !server.isEmpty }
 
     func value(_ f: ConfigField) -> String {
@@ -55,13 +55,13 @@ struct VPNConfig: Codable, Equatable, Identifiable {
     }
 }
 
-/// Préférences : UserDefaults en vrai, une fausse implémentation dans les tests.
+/// Preferences: UserDefaults for real, a fake implementation in the tests.
 protocol PreferenceSource: AnyObject {
     func string(forKey key: String) -> String?
     func data(forKey key: String) -> Data?
     func array(forKey key: String) -> [Any]?
     func dictionary(forKey key: String) -> [String: Any]?
-    /// Vrai si la valeur est imposée par un profil de configuration.
+    /// True if the value is enforced by a configuration profile.
     func isForced(_ key: String) -> Bool
     func set(_ value: Any?, forKey key: String)
 }
@@ -70,9 +70,9 @@ extension UserDefaults: PreferenceSource {
     func isForced(_ key: String) -> Bool { objectIsForced(forKey: key) }
 }
 
-/// Mots de passe et secrets TOTP : le Trousseau en vrai, une fausse implémentation dans les tests.
+/// Passwords and TOTP secrets: the Keychain for real, a fake implementation in the tests.
 protocol SecretStore {
     func get(_ account: String) -> String?
-    /// Une valeur vide supprime l'élément.
+    /// An empty value deletes the item.
     func set(_ value: String, account: String)
 }

@@ -1,17 +1,17 @@
 import Foundation
 
-/// Les configurations VPN : celles de l'utilisateur (enregistrées) et celles d'un profil de configuration macOS
-/// (lues, jamais enregistrées). Toute la logique est ici, sans interface : elle se teste seule (build.sh test).
+/// The VPN configurations: the user's own (stored) and those from a macOS configuration profile
+/// (read, never stored). All the logic is here, without any UI: it can be tested on its own (build.sh test).
 ///
-/// Stockage :
-///  - `configurations.user` (UserDefaults, JSON) : les configurations de l'utilisateur ;
-///  - `configurations` (domaine géré, imposé par un profil) : tableau de dictionnaires {name, server, protocol,
-///    authgroup, useragent, username}. Les champs présents et non vides sont imposés, les autres restent libres ;
-///  - `managedOverrides` : valeurs saisies par l'utilisateur pour les champs libres d'une configuration de profil ;
-///  - Trousseau : comptes `password.<id>` et `totp.<id>`. La configuration « default » (celle d'avant la
-///    version 2) garde les comptes `password` et `totp` : aucune ressaisie après la mise à jour.
-///  - les clés « plates » historiques (server, protocol…) imposées par un ancien profil restent une surcouche
-///    sur la configuration « default ».
+/// Storage:
+///  - `configurations.user` (UserDefaults, JSON): the user's configurations;
+///  - `configurations` (managed domain, enforced by a profile): array of dictionaries {name, server, protocol,
+///    authgroup, useragent, username}. Fields that are present and non-empty are enforced, the others stay free;
+///  - `managedOverrides`: values entered by the user for the free fields of a profile configuration;
+///  - Keychain: accounts `password.<id>` and `totp.<id>`. The "default" configuration (the one from before
+///    version 2) keeps the `password` and `totp` accounts: nothing to re-enter after the update.
+///  - the historical "flat" keys (server, protocol…) enforced by an old profile remain an overlay
+///    on the "default" configuration.
 final class ConfigStore {
     static let defaultID = "default"
     static let userKey = "configurations.user"
@@ -28,27 +28,27 @@ final class ConfigStore {
         self.secrets = secrets
     }
 
-    // MARK: - Lecture
+    // MARK: - Reading
 
-    /// Toutes les configurations : celles d'un profil d'abord, puis celles de l'utilisateur.
+    /// All configurations: those from a profile first, then the user's.
     func configs() -> [VPNConfig] { managedConfigs() + userConfigs() }
 
     func config(id: String) -> VPNConfig? { configs().first { $0.id == id } }
 
-    /// Celles qu'on peut connecter (serveur renseigné).
+    /// Those that can be connected (server filled in).
     func menuConfigs() -> [VPNConfig] { configs().filter(\.isUsable) }
 
-    /// Configuration connectée en dernier par l'app (pour afficher son nom pendant la connexion).
+    /// Configuration the app connected last (to show its name while connected).
     var activeID: String? {
         get { prefs.string(forKey: Self.activeKey) }
         set { prefs.set(newValue, forKey: Self.activeKey) }
     }
 
-    // MARK: - Configurations de l'utilisateur et migration
+    // MARK: - User configurations and migration
 
     private func loadStoredUser() -> [VPNConfig]? {
         guard let data = prefs.data(forKey: Self.userKey) else { return nil }
-        // Données illisibles : on n'écrase rien, on repart d'une configuration vide.
+        // Unreadable data: we overwrite nothing and start again from an empty configuration.
         return (try? JSONDecoder().decode([VPNConfig].self, from: data)) ?? [Self.emptyDefault()]
     }
 
@@ -65,8 +65,8 @@ final class ConfigStore {
         if let stored = loadStoredUser() {
             list = stored
         } else {
-            // Premier lancement depuis une version 1.x (ou installation neuve) : la configuration unique d'avant
-            // devient « default », avec ses secrets (mêmes comptes de Trousseau). Les anciennes clés sont gardées.
+            // First launch since a 1.x version (or a fresh install): the former single configuration
+            // becomes "default", with its secrets (same Keychain accounts). The old keys are kept.
             var d = Self.emptyDefault()
             d.server = prefs.string(forKey: ConfigField.server.rawValue) ?? ""
             d.vpnProtocol = Self.validProtocol(prefs.string(forKey: ConfigField.vpnProtocol.rawValue))
@@ -79,7 +79,7 @@ final class ConfigStore {
         return list.map { Self.legacyOverlay($0, prefs: prefs) }
     }
 
-    /// Les clés plates imposées par un ancien profil (1.x) s'appliquent à « default », comme avant.
+    /// The flat keys enforced by an old (1.x) profile apply to "default", as before.
     private static func legacyOverlay(_ config: VPNConfig, prefs: PreferenceSource) -> VPNConfig {
         var c = config
         c.vpnProtocol = validProtocol(c.vpnProtocol)
@@ -92,7 +92,7 @@ final class ConfigStore {
         return c
     }
 
-    // MARK: - Configurations d'un profil
+    // MARK: - Profile configurations
 
     private func managedConfigs() -> [VPNConfig] {
         guard prefs.isForced(Self.managedKey), let raw = prefs.array(forKey: Self.managedKey) else { return [] }
@@ -126,11 +126,11 @@ final class ConfigStore {
         return out
     }
 
-    // MARK: - Écriture
+    // MARK: - Writing
 
-    /// Enregistre l'état édité dans les réglages : la liste des configurations de l'utilisateur, et pour celles d'un
-    /// profil les seuls champs libres. Les éléments de Trousseau des configurations supprimées sont effacés.
-    /// Un champ imposé n'est jamais réécrit (la valeur du profil ne se retrouve pas dans les réglages de l'utilisateur).
+    /// Stores the state edited in the settings: the list of the user's configurations and, for those from a
+    /// profile, only the free fields. The Keychain items of deleted configurations are erased.
+    /// An enforced field is never rewritten (the profile's value does not end up in the user's settings).
     func save(_ edited: [VPNConfig]) {
         let previous = loadStoredUser() ?? []
         var overrides = prefs.dictionary(forKey: Self.overridesKey) as? [String: [String: String]] ?? [:]
@@ -141,7 +141,7 @@ final class ConfigStore {
                 var o: [String: String] = [:]
                 for f in ConfigField.allCases where !c.isLocked(f) {
                     let v = c.value(f).trimmingCharacters(in: .whitespaces)
-                    // Le protocole par défaut n'est pas un choix de l'utilisateur : on ne l'enregistre pas.
+                    // The default protocol is not a user choice: we do not store it.
                     if !v.isEmpty && !(f == .vpnProtocol && v == Constants.defaultProtocol) { o[f.rawValue] = v }
                 }
                 overrides[c.id] = o
@@ -164,14 +164,14 @@ final class ConfigStore {
         prefs.set(overrides, forKey: Self.overridesKey)
     }
 
-    /// Une nouvelle configuration vide pour l'utilisateur.
+    /// A new, empty configuration for the user.
     static func newUserConfig() -> VPNConfig {
         VPNConfig(id: UUID().uuidString, name: NSLocalizedString("New configuration", comment: ""))
     }
 
     // MARK: - Secrets
 
-    /// « default » garde les comptes d'avant la version 2 ; les autres ont un compte par configuration.
+    /// "default" keeps the accounts from before version 2; the others have one account per configuration.
     static func account(_ kind: String, id: String) -> String { id == defaultID ? kind : "\(kind).\(id)" }
 
     func password(for id: String) -> String { secrets.get(Self.account("password", id: id)) ?? "" }
@@ -184,7 +184,7 @@ final class ConfigStore {
         secrets.set("", account: Self.account("totp", id: id))
     }
 
-    /// Accepte une clé nue, une clé « base32:… » ou l'URL otpauth:// complète.
+    /// Accepts a bare key, a "base32:…" key or the full otpauth:// URL.
     static func normalizeTOTP(_ input: String) -> String {
         var t = input.trimmingCharacters(in: .whitespacesAndNewlines)
         if t.lowercased().hasPrefix("otpauth://"),
@@ -196,9 +196,9 @@ final class ConfigStore {
         return t.filter { !$0.isWhitespace && $0 != "-" }.uppercased()
     }
 
-    // MARK: - Demande de connexion
+    // MARK: - Connection request
 
-    /// Nil s'il manque quelque chose (serveur, identifiant, mot de passe ou secret TOTP).
+    /// Nil if anything is missing (server, username, password or TOTP secret).
     func request(for id: String) -> ConnectRequest? {
         guard let c = config(id: id), c.isUsable, !c.username.isEmpty else { return nil }
         let pw = password(for: id), totp = totp(for: id)
@@ -207,20 +207,20 @@ final class ConfigStore {
                               username: c.username, password: pw, totpSecret: totp)
     }
 
-    // MARK: - Outils
+    // MARK: - Helpers
 
-    /// Protocole connu, sinon AnyConnect (valeur inconnue : profil mal écrit, ancienne version…).
+    /// A known protocol, otherwise AnyConnect (unknown value: badly written profile, old version…).
     static func validProtocol(_ v: String?) -> String {
         guard let v, Constants.protocols.contains(where: { $0.id == v }) else { return Constants.defaultProtocol }
         return v
     }
 
-    /// Texte sans caractère de contrôle (il finit dans des menus et dans la configuration d'openconnect).
+    /// Text without control characters (it ends up in menus and in openconnect's configuration).
     static func isPlain(_ s: String) -> Bool {
         s.unicodeScalars.allSatisfy { !CharacterSet.controlCharacters.contains($0) }
     }
 
-    /// Nom affichable : sans caractère de contrôle, espaces réduits, 60 caractères au plus ; nil s'il est vide.
+    /// Displayable name: no control characters, whitespace collapsed, 60 characters at most; nil if empty.
     static func cleanName(_ raw: String?) -> String? {
         guard let raw else { return nil }
         let noControls = String(String.UnicodeScalarView(raw.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }))
@@ -229,7 +229,7 @@ final class ConfigStore {
         return String(collapsed.prefix(maxNameLength))
     }
 
-    /// « Mon VPN (travail) » → « mon-vpn-travail ».
+    /// "My VPN (work)" → "my-vpn-work".
     static func slug(_ name: String) -> String {
         var out = ""
         var lastDash = true

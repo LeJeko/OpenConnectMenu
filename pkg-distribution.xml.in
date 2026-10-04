@@ -10,7 +10,7 @@
     <installation-check script="checkPrerequisites()"/>
     <script>
     <![CDATA[
-    // openconnect est requis mais ne peut pas être embarqué : simple avertissement, l'installation reste possible.
+    // openconnect is required but cannot be bundled: a plain warning, installation remains possible.
     function checkPrerequisites() {
         if (system.files.fileExistsAtPath('/opt/homebrew/bin/openconnect') ||
             system.files.fileExistsAtPath('/usr/local/bin/openconnect')) {

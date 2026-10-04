@@ -1,7 +1,7 @@
 import Foundation
 import Security
 
-/// Client XPC vers le helper privilégié.
+/// XPC client for the privileged helper.
 final class HelperClient {
     private var connection: NSXPCConnection?
 
@@ -9,7 +9,7 @@ final class HelperClient {
         if let c = connection { return c }
         let c = NSXPCConnection(machServiceName: Constants.helperLabel, options: .privileged)
         c.remoteObjectInterface = NSXPCInterface(with: HelperProtocol.self)
-        // On ne parle qu'à un helper signé par notre équipe.
+        // We only talk to a helper signed by our team.
         c.setCodeSigningRequirement(Constants.helperRequirement)
         c.invalidationHandler = { [weak self] in self?.connection = nil }
         c.interruptionHandler = { [weak self] in self?.connection = nil }
@@ -18,7 +18,7 @@ final class HelperClient {
         return c
     }
 
-    /// Exécute un appel XPC ; `fallback` est renvoyé si la connexion échoue.
+    /// Performs an XPC call; `fallback` is returned if the connection fails.
     private func call<T>(fallback: T, _ body: @escaping (HelperProtocol, @escaping (T) -> Void) -> Void) async -> T {
         await withCheckedContinuation { (cont: CheckedContinuation<T, Never>) in
             let lock = NSLock()
@@ -35,7 +35,7 @@ final class HelperClient {
         }
     }
 
-    /// Abandonne la connexion en cours (après une réparation du helper, par exemple).
+    /// Drops the current connection (after a helper repair, for example).
     func reset() {
         connection?.invalidate()
         connection = nil
@@ -83,7 +83,7 @@ final class HelperClient {
     }
 }
 
-/// Droits administrateur, demandés par l'app (fenêtre système) et vérifiés par le helper.
+/// Administrator rights, requested by the app (system dialog) and verified by the helper.
 enum AdminAuth {
     static func externalForm() -> Data? {
         var ref: AuthorizationRef?

@@ -1,9 +1,9 @@
 import Foundation
 import Security
 
-/// Épinglage d'openconnect et de vpnc-script : le helper (root) ne les lance que
-/// si leur SHA-256 correspond à celui approuvé par l'administrateur.
-/// Limite connue : les bibliothèques Homebrew (GnuTLS…) ne sont pas couvertes.
+/// Pinning of openconnect and vpnc-script: the helper (root) only runs them
+/// if their SHA-256 matches the one approved by the administrator.
+/// Known limitation: Homebrew libraries (GnuTLS…) are not covered.
 struct TrustRecord: Codable {
     var openconnectPath: String
     var openconnectSHA256: String
@@ -23,7 +23,7 @@ enum Trust {
         var version: String
     }
 
-    /// Cherche openconnect et son vpnc-script dans les préfixes Homebrew usuels.
+    /// Looks for openconnect and its vpnc-script in the usual Homebrew prefixes.
     static func locate() -> Binaries? {
         let fm = FileManager.default
         for prefix in ["/opt/homebrew", "/usr/local"] {
@@ -37,7 +37,7 @@ enum Trust {
         return nil
     }
 
-    /// La version est lue dans le chemin (…/Cellar/openconnect/9.21/…), sans exécuter le binaire.
+    /// The version is read from the path (…/Cellar/openconnect/9.21/…), without running the binary.
     private static func version(fromPath path: String) -> String {
         let parts = path.split(separator: "/").map(String.init)
         if let c = parts.firstIndex(of: "Cellar"), c + 2 < parts.count, parts[c + 1] == "openconnect" {
@@ -53,7 +53,7 @@ enum Trust {
         return try? dec.decode(TrustRecord.self, from: data)
     }
 
-    /// État de confiance courant, comparé aux binaires actuellement installés.
+    /// Current trust state, compared with the binaries currently installed.
     static func check() -> (info: TrustInfo, binaries: Binaries?) {
         guard let b = locate() else {
             return (TrustInfo(trusted: false, code: "oc_missing", openconnectPath: "", version: ""), nil)
@@ -70,7 +70,7 @@ enum Trust {
         return (TrustInfo(trusted: false, code: "oc_changed", openconnectPath: b.openconnect, version: b.version), b)
     }
 
-    /// Enregistre les empreintes actuelles (appelé uniquement après vérification des droits admin).
+    /// Records the current hashes (called only after the admin rights have been verified).
     static func approveCurrent() -> (Bool, String) {
         guard let b = locate() else { return (false, "oc_missing") }
         guard let ocHash = Sys.sha256(of: b.openconnect), let scriptHash = Sys.sha256(of: b.script) else {
@@ -94,7 +94,7 @@ enum Trust {
         }
     }
 
-    /// Vérifie qu'une autorisation issue de l'app donne bien les droits administrateur.
+    /// Checks that an authorization coming from the app really grants administrator rights.
     static func verifyAdmin(_ data: Data) -> Bool {
         guard data.count == MemoryLayout<AuthorizationExternalForm>.size else { return false }
         var form = AuthorizationExternalForm()
@@ -107,7 +107,7 @@ enum Trust {
             var item = AuthorizationItem(name: name, valueLength: 0, value: nil, flags: 0)
             withUnsafeMutablePointer(to: &item) { ip in
                 var rights = AuthorizationRights(count: 1, items: ip)
-                // Sans interaction : réussit seulement si l'app a déjà obtenu le droit.
+                // Non-interactive: succeeds only if the app has already obtained the right.
                 granted = AuthorizationCopyRights(ref, &rights, nil, [.extendRights], nil) == errAuthorizationSuccess
             }
         }

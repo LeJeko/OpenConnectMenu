@@ -2,11 +2,11 @@ import Foundation
 import Darwin
 import CryptoKit
 
-/// Petites briques système utilisées par le helper (processus, réseau, hachage).
+/// Small system building blocks used by the helper (processes, network, hashing).
 enum Sys {
     static let safePath = "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin"
 
-    /// Lance un exécutable et renvoie sa sortie (stdout + stderr).
+    /// Runs an executable and returns its output (stdout + stderr).
     @discardableResult
     static func run(_ path: String, _ args: [String], env: [String: String]? = nil, input: String? = nil) -> (status: Int32, output: String) {
         let p = Process()
@@ -33,7 +33,7 @@ enum Sys {
         return (p.terminationStatus, String(decoding: data, as: UTF8.self))
     }
 
-    /// PID du processus « openconnect » en cours, s'il existe.
+    /// PID of the running "openconnect" process, if any.
     static func openConnectPID() -> Int32? {
         let count = proc_listallpids(nil, 0)
         guard count > 0 else { return nil }
@@ -59,8 +59,8 @@ enum Sys {
         return Date(timeIntervalSince1970: TimeInterval(info.pbi_start_tvsec))
     }
 
-    /// Le tunnel est l'interface utun dont l'adresse IPv4 pointe sur elle-même
-    /// (la plage attribuée par le serveur varie : 10.250.x, 10.251.x…).
+    /// The tunnel is the utun interface whose IPv4 address points at itself
+    /// (the range assigned by the server varies: 10.250.x, 10.251.x…).
     static func tunnel() -> (name: String, ip: String)? {
         var head: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&head) == 0 else { return nil }
@@ -91,7 +91,7 @@ enum Sys {
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
-    /// Dernières lignes d'un fichier texte (pour les messages d'erreur).
+    /// Last lines of a text file (for error messages).
     static func tail(_ path: String, lines: Int = 6) -> String {
         guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return "" }
         return text.split(separator: "\n").suffix(lines).joined(separator: "\n")

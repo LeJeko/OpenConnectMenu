@@ -1,7 +1,7 @@
 import SwiftUI
 import Security
 
-/// Mots de passe et secret TOTP : Trousseau. Le reste : UserDefaults.
+/// Passwords and TOTP secret: Keychain. Everything else: UserDefaults.
 enum Keychain {
     static func set(_ value: String, account: String) {
         let base: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
@@ -27,14 +27,14 @@ enum Keychain {
     }
 }
 
-/// Le Trousseau, vu par ConfigStore.
+/// The Keychain, as seen by ConfigStore.
 struct KeychainSecrets: SecretStore {
     func get(_ account: String) -> String? { Keychain.get(account) }
     func set(_ value: String, account: String) { Keychain.set(value, account: account) }
 }
 
 extension ConfigStore {
-    /// Le magasin de l'app : préférences de l'utilisateur et Trousseau.
+    /// The app's store: user preferences and Keychain.
     static let shared = ConfigStore(prefs: UserDefaults.standard, secrets: KeychainSecrets())
 }
 
@@ -89,7 +89,7 @@ struct SettingsView: View {
         .frame(width: 720, height: general == nil ? 560 : 610)
     }
 
-    /// Liste des configurations et formulaire. Enregistrer / Annuler ne concernent que cet onglet.
+    /// Configuration list and form. Save / Cancel only concern this tab.
     private var configurationsTab: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
@@ -112,7 +112,7 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: Liste des configurations
+    // MARK: Configuration list
 
     private var sidebar: some View {
         VStack(spacing: 0) {
@@ -144,7 +144,7 @@ struct SettingsView: View {
         .frame(width: 210)
     }
 
-    // MARK: Détail
+    // MARK: Detail
 
     @ViewBuilder
     private var detail: some View {
@@ -187,7 +187,7 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: Liaisons et actions
+    // MARK: Bindings and actions
 
     private var name: Binding<String> {
         Binding(get: { current?.name ?? "" }, set: { v in if let i = index { configs[i].name = v } })
@@ -197,7 +197,7 @@ struct SettingsView: View {
         Binding(get: { current?.value(f) ?? "" }, set: { v in if let i = index { configs[i].set(f, v) } })
     }
 
-    /// Mot de passe ou secret TOTP de la configuration affichée.
+    /// Password or TOTP secret of the configuration being shown.
     private func secret(_ values: Binding<[String: String]>) -> Binding<String> {
         Binding(get: { values.wrappedValue[selection] ?? "" }, set: { values.wrappedValue[selection] = $0 })
     }

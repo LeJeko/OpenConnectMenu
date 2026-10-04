@@ -1,10 +1,10 @@
 import Foundation
 
-/// Valide une demande de connexion venue de l'app et fabrique le fichier de configuration d'openconnect.
-/// Rien de ce que l'app envoie n'est utilisé tel quel : chaque champ est contrôlé ici, par le helper.
+/// Validates a connection request coming from the app and builds openconnect's configuration file.
+/// Nothing the app sends is used as is: every field is checked here, by the helper.
 enum ConnectConfig {
-    /// Retourne le contenu du fichier de configuration, ou nil si la demande est invalide.
-    /// (Le mot de passe n'y figure pas : il passe par l'entrée standard.)
+    /// Returns the content of the configuration file, or nil if the request is invalid.
+    /// (The password is not in it: it goes through standard input.)
     static func make(_ req: ConnectRequest) -> String? {
         guard let server = clean(req.server), server.hasPrefix("https://"),
               let user = clean(req.username),
@@ -12,13 +12,13 @@ enum ConnectConfig {
               secret.range(of: "^[A-Z2-7]+=*$", options: .regularExpression) != nil,
               !req.password.isEmpty, !req.password.contains("\n") else { return nil }
 
-        // Protocole : liste fermée (jamais une valeur libre) ; absent = AnyConnect.
+        // Protocol: closed list (never a free value); absent = AnyConnect.
         let rawProtocol = (req.vpnProtocol ?? "").trimmingCharacters(in: .whitespaces)
         let proto = rawProtocol.isEmpty ? Constants.defaultProtocol : rawProtocol
         guard Constants.protocols.contains(where: { $0.id == proto }) else { return nil }
 
-        // Groupe d'authentification et User-Agent : facultatifs, mais valides s'ils sont renseignés.
-        // Sans User-Agent, openconnect en choisit un adapté au protocole.
+        // Authentication group and User-Agent: optional, but valid if provided.
+        // Without a User-Agent, openconnect picks one suited to the protocol.
         let group = optional(req.authgroup)
         let agent = optional(req.useragent)
         guard group.valid, agent.valid else { return nil }

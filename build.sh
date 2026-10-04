@@ -1,35 +1,35 @@
 #!/bin/bash
-# Compile, assemble et signe OpenConnectMenu.app (app de barre de menu + helper privilégié).
+# Builds, assembles and signs OpenConnectMenu.app (menu-bar app + privileged helper).
 #
-#   ./build.sh            compile et signe l'app (sortie dans $BUILD)
-#   ./build.sh install    idem, puis installe dans /Applications et lance l'app
-#   ./build.sh pkg        idem, puis fabrique un .pkg signé avec écran d'accueil (copié dans dist/)
-#                         avec NOTARY_PROFILE : le notarise, agrafe le ticket et vérifie Gatekeeper
-#   ./build.sh test       compile et exécute les tests (Tests/) ; ne demande ni config.env ni certificat
-#   ./build.sh mobileconfig   fabrique un profil de configuration macOS (.mobileconfig, dans dist/) qui apporte une ou
-#                         plusieurs configurations VPN en lecture seule (PROFILE=a,b), à installer à la main
-#                         dans Réglages Système ou à déployer par MDM
+#   ./build.sh            builds and signs the app (output in $BUILD)
+#   ./build.sh install    same, then installs into /Applications and launches the app
+#   ./build.sh pkg        same, then builds a signed .pkg with a welcome screen (copied to dist/)
+#                         with NOTARY_PROFILE: notarizes it, staples the ticket and checks Gatekeeper
+#   ./build.sh test       builds and runs the tests (Tests/); needs neither config.env nor a certificate
+#   ./build.sh mobileconfig   builds a macOS configuration profile (.mobileconfig, in dist/) that supplies one or
+#                         more read-only VPN configurations (PROFILE=a,b), to install by hand
+#                         in System Settings or to deploy through MDM
 #
-# Configuration : copiez config.env.example en config.env et renseignez TEAM_ID et BUNDLE_ID.
-#                 Toute variable de l'environnement prime sur config.env.
+# Configuration: copy config.env.example to config.env and fill in TEAM_ID and BUNDLE_ID.
+#                 Any environment variable takes precedence over config.env.
 #
-# Variables : TEAM_ID             identifiant d'équipe Apple (10 caractères)           [obligatoire]
-#             BUNDLE_ID           identifiant de bundle de l'app (ex. com.example.X)   [obligatoire]
-#             IDENTITY            identité de signature de l'app (défaut : détectée dans le trousseau)
-#             INSTALLER_IDENTITY  identité de signature du .pkg (défaut : détectée dans le trousseau)
-#             NOTARY_PROFILE      profil notarytool (xcrun notarytool store-credentials) ; sans lui, pas de notarisation
-#             CONFIG              chemin d'un autre fichier de configuration (défaut : ./config.env)
-#             PROFILE             commande mobileconfig : nom(s) de profils profiles/<nom>.env, séparés par des virgules
-#                                 (une configuration par profil ; modèle : profiles/example.env)
+# Variables: TEAM_ID             Apple team ID (10 characters)                        [required]
+#             BUNDLE_ID           bundle identifier of the app (e.g. com.example.X)    [required]
+#             IDENTITY            signing identity of the app (default: detected in the keychain)
+#             INSTALLER_IDENTITY  signing identity of the .pkg (default: detected in the keychain)
+#             NOTARY_PROFILE      notarytool profile (xcrun notarytool store-credentials); without it, no notarization
+#             CONFIG              path of another configuration file (default: ./config.env)
+#             PROFILE             mobileconfig command: name(s) of profiles/<name>.env profiles, comma-separated
+#                                 (one configuration per profile; template: profiles/example.env)
 #             VPN_NAME, VPN_SERVER, VPN_PROTOCOL, VPN_AUTHGROUP, VPN_USERAGENT, VPN_USERNAME
-#                                 réglages imposés (normalement lus dans profiles/<nom>.env ; l'environnement prime)
-#             BUILD               dossier de sortie (hors iCloud Drive)
-#             DIST                dossier où est copié le .pkg (défaut : ./dist)
-#             NO_TIMESTAMP=1      signature hors ligne
-#             ARCHS               architectures à compiler (défaut : « arm64 x86_64 », binaire universel)
-#                                 ex. ARCHS=arm64 ./build.sh pour un build rapide, natif Apple silicon
+#                                 enforced settings (normally read from profiles/<name>.env; the environment wins)
+#             BUILD               output folder (outside iCloud Drive)
+#             DIST                folder the .pkg is copied to (default: ./dist)
+#             NO_TIMESTAMP=1      offline signing
+#             ARCHS               architectures to build (default: "arm64 x86_64", universal binary)
+#                                 e.g. ARCHS=arm64 ./build.sh for a quick, native Apple silicon build
 #
-# Exemple : NOTARY_PROFILE=mon-profil ./build.sh pkg
+# Example: NOTARY_PROFILE=my-profile ./build.sh pkg
 set -euo pipefail
 cd "$(dirname "$0")"
 ROOT="$PWD"
@@ -40,9 +40,9 @@ die() { echo "✘ $*" >&2; exit 1; }
 load_config() {
   local file="${CONFIG:-$ROOT/config.env}" v kv
   local -a saved=()
-  [ -f "$file" ] || die "Configuration introuvable : $file
-  Copiez config.env.example en config.env, puis renseignez TEAM_ID et BUNDLE_ID."
-  # Les variables déjà définies dans l'environnement priment sur les fichiers.
+  [ -f "$file" ] || die "Configuration not found: $file
+  Copy config.env.example to config.env, then fill in TEAM_ID and BUNDLE_ID."
+  # Variables already defined in the environment take precedence over the files.
   for v in TEAM_ID BUNDLE_ID IDENTITY INSTALLER_IDENTITY NOTARY_PROFILE PROFILE; do
     [ -n "${!v+x}" ] && saved+=("$v=${!v}")
   done
@@ -52,14 +52,14 @@ load_config() {
   apply_saved
 
   [[ "${TEAM_ID:-}" =~ ^[A-Z0-9]{10}$ ]] \
-    || die "TEAM_ID invalide ou absent dans $file : 10 caractères (lettres majuscules et chiffres) attendus."
+    || die "TEAM_ID missing or invalid in $file: 10 characters (uppercase letters and digits) expected."
   [[ "${BUNDLE_ID:-}" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]] \
-    || die "BUNDLE_ID invalide ou absent dans $file : notation DNS inversée attendue (ex. com.example.OpenConnectMenu)."
+    || die "BUNDLE_ID missing or invalid in $file: reverse-DNS notation expected (e.g. com.example.OpenConnectMenu)."
   [ "$TEAM_ID" != "ABCDE12345" ] && [[ "$BUNDLE_ID" != com.example.* ]] \
-    || die "$file contient encore les valeurs d'exemple : renseignez votre TEAM_ID et votre BUNDLE_ID."
+    || die "$file still contains the example values: set your own TEAM_ID and BUNDLE_ID."
 }
 
-# Cherche dans le trousseau l'identité « $1: … (TEAM_ID) » ; échoue s'il y en a zéro ou plusieurs.
+# Looks in the keychain for the identity "$1: … (TEAM_ID)"; fails if there are none or several.
 find_identity() {
   local kind="$1" var="$2" found count
   found="$(security find-identity -v 2>/dev/null \
@@ -67,13 +67,13 @@ find_identity() {
   count="$(printf '%s' "$found" | grep -c . || true)"
   [ "$count" -eq 1 ] && { printf '%s' "$found"; return; }
   if [ "$count" -eq 0 ]; then
-    die "Aucun certificat « $kind » pour l'équipe $TEAM_ID dans le trousseau. Installez-le ou renseignez $var."
+    die "No \"$kind\" certificate for team $TEAM_ID in the keychain. Install it or set $var."
   fi
-  die "Plusieurs certificats « $kind » pour l'équipe $TEAM_ID : renseignez $var parmi
+  die "Several \"$kind\" certificates for team $TEAM_ID: set $var to one of
 $(printf '%s\n' "$found" | sed 's/^/    /')"
 }
 
-# Remplace les marqueurs @…@ des fichiers modèles (plists, scripts, distribution) par la configuration.
+# Replaces the @…@ markers of the template files (plists, scripts, distribution) with the configuration.
 substitute() {
   sed -i '' \
     -e "s|@BUNDLE_ID@|$BUNDLE_ID|g" \
@@ -81,14 +81,14 @@ substitute() {
     -e "s|@PKG_ID@|$PKG_ID|g" \
     -e "s|@TEAM_ID@|$TEAM_ID|g" \
     "$@"
-  # Garde-fou : un marqueur oublié ferait un paquet silencieusement faux.
+  # Safeguard: a forgotten marker would silently produce a wrong package.
   if grep -qE '@(BUNDLE_ID|HELPER_LABEL|PKG_ID|TEAM_ID|VERSION|ARCH)@' "$@"; then
-    die "Marqueur non remplacé dans : $*"
+    die "Marker not replaced in: $*"
   fi
 }
 
 if [ "${1:-}" = test ]; then
-  TEAM_ID=TESTTEAM00; BUNDLE_ID=test.bundle   # valeurs fictives : les tests n'en dépendent pas
+  TEAM_ID=TESTTEAM00; BUNDLE_ID=test.bundle   # dummy values: the tests do not depend on them
 else
   load_config
 fi
@@ -96,7 +96,7 @@ APP_NAME=OpenConnectMenu
 APP_ID="$BUNDLE_ID"
 HELPER_LABEL="$BUNDLE_ID.helper"
 PKG_ID="$BUNDLE_ID.pkg"
-# La signature échoue dans iCloud Drive (attributs étendus) : on construit ailleurs.
+# Signing fails inside iCloud Drive (extended attributes): we build elsewhere.
 BUILD="${BUILD:-$HOME/Library/Caches/OpenConnectMenu/build}"
 DIST="${DIST:-$ROOT/dist}"
 ARCHS="${ARCHS:-arm64 x86_64}"
@@ -108,17 +108,17 @@ build_app() {
   rm -rf "$BUILD"
   mkdir -p "$BUILD"
 
-  # iCloud Drive peut toucher les fichiers pendant la compilation (« modified during the build ») :
-  # on compile donc une copie des sources, hors iCloud.
+  # iCloud Drive can touch files during compilation ("modified during the build"):
+  # so we compile a copy of the sources, outside iCloud.
   local src="$BUILD/src"
   mkdir -p "$src"
   cp -R Shared App Helper "$src/"
   substitute "$src/App/Info.plist" "$src/Helper/Info.plist" "$src/Helper/launchd.plist"
 
-  # Identifiant de build partagé : permet à l'app de détecter un ancien helper resté en mémoire.
+  # Shared build identifier: lets the app detect an old helper still running.
   echo "let buildStamp = \"$(date +%Y%m%d-%H%M%S)\"" > "$BUILD/BuildStamp.swift"
 
-  # Identifiants issus de la configuration (utilisés par la vérification de signature XPC).
+  # Identifiers derived from the configuration (used by the XPC signature check).
   cat > "$BUILD/BuildConfig.swift" <<SWIFT
 enum BuildConfig {
     static let bundleID = "$BUNDLE_ID"
@@ -126,40 +126,40 @@ enum BuildConfig {
 }
 SWIFT
 
-  # Une compilation par architecture, puis fusion en un binaire universel avec lipo.
+  # One compilation per architecture, then merged into a universal binary with lipo.
   local arch helper_slices=() app_slices=()
   for arch in $ARCHS; do
-    echo "▸ Compilation du helper ($arch)"
+    echo "▸ Compiling the helper ($arch)"
     swiftc -O -swift-version 5 -target "$arch-apple-macos$MIN_MACOS" \
       "$src"/Shared/*.swift "$BUILD/BuildStamp.swift" "$BUILD/BuildConfig.swift" "$src"/Helper/*.swift \
       -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker "$src/Helper/Info.plist" \
       -o "$BUILD/helper-$arch"
     helper_slices+=("$BUILD/helper-$arch")
 
-    echo "▸ Compilation de l'app ($arch)"
+    echo "▸ Compiling the app ($arch)"
     swiftc -O -swift-version 5 -target "$arch-apple-macos$MIN_MACOS" \
       "$src"/Shared/*.swift "$BUILD/BuildStamp.swift" "$BUILD/BuildConfig.swift" "$src"/App/*.swift \
       -o "$BUILD/app-$arch"
     app_slices+=("$BUILD/app-$arch")
   done
-  echo "▸ Fusion des architectures ($ARCHS)"
+  echo "▸ Merging architectures ($ARCHS)"
   lipo -create "${helper_slices[@]}" -output "$BUILD/helper-bin"
   lipo -create "${app_slices[@]}" -output "$BUILD/app-bin"
-  echo "    helper : $(lipo -archs "$BUILD/helper-bin")  |  app : $(lipo -archs "$BUILD/app-bin")"
+  echo "    helper: $(lipo -archs "$BUILD/helper-bin")  |  app: $(lipo -archs "$BUILD/app-bin")"
 
-  echo "▸ Assemblage du bundle"
+  echo "▸ Assembling the bundle"
   mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Library/LaunchDaemons"
   mkdir -p "$APP/Contents/Resources"
   cp "$src/App/Info.plist" "$APP/Contents/Info.plist"
   cp "$src/App/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
-  # Traductions (en = langue par défaut, fr) : App/Resources/<langue>.lproj/Localizable.strings
+  # Translations (en = default language, fr): App/Resources/<language>.lproj/Localizable.strings
   cp -R "$src/App/Resources/." "$APP/Contents/Resources/"
   cp "$BUILD/app-bin" "$APP/Contents/MacOS/$APP_NAME"
   cp "$BUILD/helper-bin" "$APP/Contents/MacOS/$HELPER_LABEL"
   cp "$src/Helper/launchd.plist" "$APP/Contents/Library/LaunchDaemons/$HELPER_LABEL.plist"
   xattr -cr "$APP"
 
-  echo "▸ Signature de l'app ($IDENTITY)"
+  echo "▸ Signing the app ($IDENTITY)"
   codesign --force --options runtime $TS -s "$IDENTITY" -i "$HELPER_LABEL" "$APP/Contents/MacOS/$HELPER_LABEL"
   codesign --force --options runtime $TS -s "$IDENTITY" "$APP"
   codesign --verify --strict --verbose=2 "$APP"
@@ -168,38 +168,38 @@ SWIFT
 }
 
 install_app() {
-  echo "▸ Installation dans /Applications"
+  echo "▸ Installing into /Applications"
   pkill -x "$APP_NAME" 2>/dev/null || true
   sleep 1
   rm -rf "/Applications/$APP_NAME.app"
   ditto --noextattr --noqtn "$APP" "/Applications/$APP_NAME.app"
   open "/Applications/$APP_NAME.app"
-  echo "✔ Installé et lancé"
+  echo "✔ Installed and launched"
 }
 
 notarize_pkg() {
   local file="$1" out id verdict
-  echo "▸ Notarisation (profil : $NOTARY_PROFILE) — l'analyse d'Apple prend de quelques minutes"
-  # Le code de retour de notarytool ne suffit pas : on lit le statut.
+  echo "▸ Notarizing (profile: $NOTARY_PROFILE) — Apple's analysis takes a few minutes"
+  # notarytool's exit code is not enough: we read the status.
   out="$(xcrun notarytool submit "$file" --keychain-profile "$NOTARY_PROFILE" --wait 2>&1)" || true
   echo "$out" | sed 's/^/    /'
   id="$(echo "$out" | awk '/^  id:/ {print $2; exit}')"
   verdict="$(echo "$out" | awk '/^  status:/ {print $2}' | tail -1)"
   if [ "$verdict" != "Accepted" ]; then
-    echo "✘ Notarisation non acceptée (statut : ${verdict:-inconnu}). Le paquet n'est PAS notarisé : $file"
+    echo "✘ Notarization not accepted (status: ${verdict:-unknown}). The package is NOT notarized: $file"
     if [ -n "$id" ]; then
-      echo "  Journal d'Apple :"
+      echo "  Apple's log:"
       xcrun notarytool log "$id" --keychain-profile "$NOTARY_PROFILE" 2>&1 | sed 's/^/    /' || true
     fi
     exit 1
   fi
 
-  echo "▸ Agrafage du ticket"
+  echo "▸ Stapling the ticket"
   xcrun stapler staple "$file" | tail -1
   xcrun stapler validate "$file" | tail -1
-  echo "  Évaluation Gatekeeper :"
+  echo "  Gatekeeper assessment:"
   spctl --assess --type install -vv "$file" 2>&1 | sed 's/^/    /' \
-    || { echo "✘ Gatekeeper refuse le paquet après notarisation."; exit 1; }
+    || { echo "✘ Gatekeeper rejects the package after notarization."; exit 1; }
 }
 
 make_pkg() {
@@ -209,14 +209,14 @@ make_pkg() {
   components="$BUILD/components.plist"
   pkg="$BUILD/$APP_NAME-$version.pkg"
 
-  echo "▸ Préparation du contenu du paquet"
+  echo "▸ Preparing the package contents"
   mkdir -p "$stage/Applications"
   ditto --noextattr --noqtn "$APP" "$stage/Applications/$APP_NAME.app"
 
-  # L'app doit toujours atterrir dans /Applications (pas relocalisée vers une copie trouvée
-  # ailleurs) et remplacer une version identique ou plus ancienne.
+  # The app must always land in /Applications (not be relocated to a copy found
+  # elsewhere) and replace an identical or older version.
   pkgbuild --analyze --root "$stage" "$components" >/dev/null
-  # Certaines clés sont absentes du fichier d'analyse : on les modifie ou on les ajoute.
+  # Some keys are missing from the analysis file: we modify or add them.
   set_component() {
     /usr/libexec/PlistBuddy -c "Set :0:$1 $3" "$components" 2>/dev/null \
       || /usr/libexec/PlistBuddy -c "Add :0:$1 $2 $3" "$components"
@@ -225,13 +225,13 @@ make_pkg() {
   set_component BundleIsVersionChecked bool false
   set_component BundleOverwriteAction string upgrade
 
-  # Scripts d'installation : copie de travail avec les identifiants de la configuration.
+  # Installation scripts: working copy with the identifiers from the configuration.
   rm -rf "$BUILD/pkg-scripts"
   cp -R "$ROOT/pkg-scripts" "$BUILD/pkg-scripts"
   substitute "$BUILD/pkg-scripts"/*
   chmod +x "$BUILD/pkg-scripts"/*
 
-  echo "▸ Construction du paquet composant"
+  echo "▸ Building the component package"
   local component="$BUILD/component.pkg"
   pkgbuild --root "$stage" \
     --component-plist "$components" \
@@ -241,9 +241,9 @@ make_pkg() {
     --scripts "$BUILD/pkg-scripts" \
     "$component"
 
-  # Paquet « produit » : ajoute l'écran d'accueil, les textes localisés et la vérification
-  # de la présence d'openconnect avant l'installation (Distribution).
-  echo "▸ Assemblage et signature du paquet produit ($INSTALLER_IDENTITY)"
+  # "Product" package: adds the welcome screen, the localized texts and the check
+  # that openconnect is present before installing (Distribution).
+  echo "▸ Assembling and signing the product package ($INSTALLER_IDENTITY)"
   local distribution="$BUILD/Distribution.xml"
   sed -e "s/@VERSION@/$version/g" -e "s/@ARCH@/${ARCHS// /,}/g" pkg-distribution.xml.in > "$distribution"
   substitute "$distribution"
@@ -257,41 +257,41 @@ make_pkg() {
   mkdir -p "$DIST"
   cp "$pkg" "$DIST/"
 
-  echo "▸ Vérification"
+  echo "▸ Verification"
   pkgutil --check-signature "$DIST/$(basename "$pkg")" | sed -n '1,6p'
   local tmp; tmp="$(mktemp -d)"
   pkgutil --expand-full "$pkg" "$tmp/x"
   local extracted
   extracted="$(find "$tmp/x" -type d -name "$APP_NAME.app" | head -1)"
-  echo "  Contenu :"
+  echo "  Contents:"
   find "$extracted/Contents" -type f \( -name "$APP_NAME" -o -name "$HELPER_LABEL" -o -name "$HELPER_LABEL.plist" \) | sed "s|^$extracted/|    |"
-  echo "  Architectures (attendu : $ARCHS) :"
+  echo "  Architectures (expected: $ARCHS):"
   for f in "$extracted/Contents/MacOS/$APP_NAME" "$extracted/Contents/MacOS/$HELPER_LABEL"; do
-    echo "    $(basename "$f") : $(lipo -archs "$f")"
+    echo "    $(basename "$f"): $(lipo -archs "$f")"
   done
-  echo "  Écran d'accueil et textes :"
+  echo "  Welcome screen and texts:"
   find "$tmp/x/Resources" -type f | sed "s|^$tmp/x/Resources/|    |" | sort
-  echo "  Signature de l'app extraite :"
-  codesign --verify --strict "$extracted" 2>&1 | sed 's/^/    /' && echo "    valide"
+  echo "  Signature of the extracted app:"
+  codesign --verify --strict "$extracted" 2>&1 | sed 's/^/    /' && echo "    valid"
   rm -rf "$tmp"
 
   if [ -n "${NOTARY_PROFILE:-}" ]; then
     notarize_pkg "$DIST/$(basename "$pkg")"
-    echo "✔ $DIST/$(basename "$pkg")  (signé, notarisé, agrafé)"
+    echo "✔ $DIST/$(basename "$pkg")  (signed, notarized, stapled)"
   else
-    echo "  Évaluation Gatekeeper (un refus « Unnotarized » est attendu sans notarisation) :"
+    echo "  Gatekeeper assessment (an \"Unnotarized\" rejection is expected without notarization):"
     spctl --assess --type install -vv "$DIST/$(basename "$pkg")" 2>&1 | sed 's/^/    /' || true
-    echo "✔ $DIST/$(basename "$pkg")  (signé, non notarisé — relancez avec NOTARY_PROFILE=<profil> pour notariser)"
+    echo "✔ $DIST/$(basename "$pkg")  (signed, not notarized — run again with NOTARY_PROFILE=<profile> to notarize)"
   fi
 }
 
-# Certificats résolus avant toute compilation : une erreur de configuration apparaît tout de suite.
+# Certificates resolved before any compilation: a configuration error shows up right away.
 case "${1:-build}" in
   build|install|pkg) IDENTITY="${IDENTITY:-$(find_identity "Developer ID Application" IDENTITY)}" ;;
 esac
 [ "${1:-}" = pkg ] && INSTALLER_IDENTITY="${INSTALLER_IDENTITY:-$(find_identity "Developer ID Installer" INSTALLER_IDENTITY)}"
 
-# Tests de la logique des configurations (App/ConfigModel.swift, App/ConfigStore.swift), sans interface.
+# Tests of the configuration logic (App/ConfigModel.swift, App/ConfigStore.swift), with no UI.
 run_tests() {
   local out="$BUILD/tests"
   mkdir -p "$out"
@@ -301,43 +301,43 @@ enum BuildConfig {
     static let teamID = "TESTTEAM00"
 }
 SWIFT
-  echo "▸ Compilation des tests"
+  echo "▸ Compiling the tests"
   swiftc -O -swift-version 5 -parse-as-library -target "$(uname -m)-apple-macos$MIN_MACOS" \
     Shared/Shared.swift "$out/BuildConfig.swift" App/ConfigModel.swift App/ConfigStore.swift \
     Tests/ConfigStoreTests.swift -o "$out/tests"
-  echo "▸ Exécution"
+  echo "▸ Running"
   "$out/tests"
 }
 
-# Profil de configuration macOS (.mobileconfig) : apporte des configurations VPN en lecture seule à l'app. macOS range les
-# valeurs dans le domaine de préférences de l'app (son identifiant de bundle), sous la clé « configurations » (un tableau
-# de {name, server, protocol, authgroup, useragent, username}) ; l'app les affiche verrouillées. Le mot de passe et le
-# secret TOTP ne sont jamais dans un profil.
+# macOS configuration profile (.mobileconfig): supplies read-only VPN configurations to the app. macOS stores the
+# values in the app's preferences domain (its bundle identifier), under the "configurations" key (an array
+# of {name, server, protocol, authgroup, useragent, username}); the app shows them locked. The password and the
+# TOTP secret are never part of a profile.
 make_mobileconfig() {
   local pb="/usr/libexec/PlistBuddy" v n i
   local -a profile_names=() rows=()
   local -a envvars=(VPN_NAME VPN_SERVER VPN_PROTOCOL VPN_AUTHGROUP VPN_USERAGENT VPN_USERNAME)
-  # Séparateur des champs d'une configuration. Ce n'est pas un « blanc » pour IFS (la tabulation en est un : read
-  # fusionnerait alors les champs vides et décalerait les valeurs). C'est un caractère de contrôle : refusé dans les valeurs.
+  # Field separator of a configuration. It is not IFS "whitespace" (the tab is: read
+  # would then merge empty fields and shift the values). It is a control character: rejected in values.
   local FS=$'\x1f'
 
-  # Une configuration par profil (PROFILE=a,b) ; sans profil, une seule, décrite par l'environnement (VPN_*).
+  # One configuration per profile (PROFILE=a,b); without a profile, a single one, described by the environment (VPN_*).
   if [ -n "${PROFILE:-}" ]; then IFS=',' read -r -a profile_names <<< "$PROFILE"; else profile_names=(""); fi
 
-  # Protocoles gérés : lus dans Shared/Shared.swift, qui est la liste de référence (app et helper).
+  # Supported protocols: read from Shared/Shared.swift, which is the reference list (app and helper).
   local ids; ids="$(sed -nE 's/.*VPNProtocol\(id: "([a-z0-9]+)".*/\1/p' "$ROOT/Shared/Shared.swift" | tr '\n' ' ')"
 
-  # Valeurs de l'environnement d'origine : elles priment sur les fichiers de profil.
+  # Values from the original environment: they take precedence over the profile files.
   local -a saved=()
   for v in "${envvars[@]}"; do [ -n "${!v+x}" ] && saved+=("$v=${!v}"); done
 
   for n in "${profile_names[@]}"; do
     if [ -n "$n" ]; then
       [[ "$n" =~ ^[A-Za-z0-9._-]+$ && "$n" != .* ]] \
-        || die "Nom de profil invalide : « $n » (lettres, chiffres, point, tiret et tiret bas uniquement)."
-      [ -f "$ROOT/profiles/$n.env" ] || die "Profil introuvable : profiles/$n.env (modèle : profiles/example.env)"
+        || die "Invalid profile name: \"$n\" (letters, digits, dot, hyphen and underscore only)."
+      [ -f "$ROOT/profiles/$n.env" ] || die "Profile not found: profiles/$n.env (template: profiles/example.env)"
     fi
-    # Chaque profil est lu dans un sous-shell : les variables ne se mélangent pas d'un profil à l'autre.
+    # Each profile is read in a subshell: variables do not leak from one profile to the next.
     local row
     row="$(
       unset "${envvars[@]}"
@@ -350,23 +350,23 @@ make_mobileconfig() {
     rows+=("$row")
   done
 
-  # Validation. Les valeurs sont passées à PlistBuddy : ni guillemet, ni antislash, ni caractère de contrôle
-  # (le séparateur de champs ci-dessus est un caractère de contrôle).
+  # Validation. Values are passed to PlistBuddy: no quote, no backslash, no control character
+  # (the field separator above is a control character).
   local name server proto group agent user label
   for i in "${!rows[@]}"; do
     IFS="$FS" read -r name server proto group agent user <<< "${rows[$i]}"
-    label="${profile_names[$i]:-environnement}"
+    label="${profile_names[$i]:-environment}"
     for v in "$name" "$server" "$proto" "$group" "$agent" "$user"; do
-      case "$v" in *\"*|*\\*) die "Profil « $label » : guillemets et antislash interdits (« $v »)." ;; esac
-      [[ "$v" != *[[:cntrl:]]* ]] || die "Profil « $label » : caractères de contrôle interdits."
+      case "$v" in *\"*|*\\*) die "Profile \"$label\": quotes and backslashes are not allowed (\"$v\")." ;; esac
+      [[ "$v" != *[[:cntrl:]]* ]] || die "Profile \"$label\": control characters are not allowed."
     done
-    [ -n "${name// /}" ] || die "Profil « $label » : VPN_NAME vide."
-    [ "${#name}" -le 60 ] || die "Profil « $label » : VPN_NAME trop long (60 caractères au plus)."
+    [ -n "${name// /}" ] || die "Profile \"$label\": VPN_NAME is empty."
+    [ "${#name}" -le 60 ] || die "Profile \"$label\": VPN_NAME is too long (60 characters at most)."
     [ -n "$server$proto$group$agent$user" ] \
-      || die "Profil « $label » : rien à imposer. Renseignez au moins VPN_SERVER (voir profiles/example.env)."
-    [[ -z "$server" || "$server" == https://* ]] || die "Profil « $label » : VPN_SERVER doit commencer par https:// (valeur : $server)."
+      || die "Profile \"$label\": nothing to enforce. Set at least VPN_SERVER (see profiles/example.env)."
+    [[ -z "$server" || "$server" == https://* ]] || die "Profile \"$label\": VPN_SERVER must start with https:// (value: $server)."
     if [ -n "$proto" ]; then
-      [[ " $ids" == *" $proto "* ]] || die "Profil « $label » : VPN_PROTOCOL inconnu : « $proto ». Valeurs possibles : ${ids% }"
+      [[ " $ids" == *" $proto "* ]] || die "Profile \"$label\": unknown VPN_PROTOCOL: \"$proto\". Possible values: ${ids% }"
     fi
   done
 
@@ -378,7 +378,7 @@ make_mobileconfig() {
   local base=":PayloadContent:0" cfgs=":PayloadContent:0:PayloadContent:$BUNDLE_ID:Forced:0:mcx_preference_settings:configurations"
 
   plutil -create xml1 "$f"
-  # Une commande par appel : PlistBuddy plante (« Abort trap ») à partir de 15 arguments -c.
+  # One command per call: PlistBuddy crashes ("Abort trap") from 15 -c arguments.
   pbadd() { "$pb" -c "Add $1" "$f"; }
   pbadd ":PayloadType string Configuration"
   pbadd ":PayloadVersion integer 1"
@@ -386,7 +386,7 @@ make_mobileconfig() {
   pbadd ":PayloadUUID string $(uuidgen)"
   pbadd ":PayloadScope string System"
   pbadd ":PayloadDisplayName string $APP_NAME ($shown_label)"
-  pbadd ":PayloadDescription string Apporte des configurations VPN en lecture seule à $APP_NAME."
+  pbadd ":PayloadDescription string Supplies read-only VPN configurations to $APP_NAME."
   pbadd ":PayloadRemovalDisallowed bool false"
   pbadd ":PayloadContent array"
   pbadd "$base dict"
@@ -394,14 +394,14 @@ make_mobileconfig() {
   pbadd "$base:PayloadVersion integer 1"
   pbadd "$base:PayloadIdentifier string $id.settings"
   pbadd "$base:PayloadUUID string $(uuidgen)"
-  pbadd "$base:PayloadDisplayName string $APP_NAME : configurations VPN"
+  pbadd "$base:PayloadDisplayName string $APP_NAME: VPN configurations"
   pbadd "$base:PayloadContent dict"
   pbadd "$base:PayloadContent:$BUNDLE_ID dict"
   pbadd "$base:PayloadContent:$BUNDLE_ID:Forced array"
   pbadd "$base:PayloadContent:$BUNDLE_ID:Forced:0 dict"
   pbadd "$base:PayloadContent:$BUNDLE_ID:Forced:0:mcx_preference_settings dict"
   pbadd "$cfgs array"
-  # Les noms de clés sont ceux lus par l'app ; un champ vide n'est pas imposé (l'utilisateur le règle).
+  # The key names are the ones the app reads; an empty field is not enforced (the user sets it).
   for i in "${!rows[@]}"; do
     IFS="$FS" read -r name server proto group agent user <<< "${rows[$i]}"
     pbadd "$cfgs:$i dict"
@@ -413,12 +413,12 @@ make_mobileconfig() {
     [ -n "$user" ]   && pbadd "$cfgs:$i:username string $user"
   done
 
-  plutil -lint "$f" >/dev/null || die "Profil généré invalide."
+  plutil -lint "$f" >/dev/null || die "The generated profile is invalid."
   mkdir -p "$DIST"
   cp "$f" "$out"
   rm -rf "$tmp"
   echo "✔ $out"
-  echo "  Domaine géré : $BUNDLE_ID (${#rows[@]} configuration(s))"
+  echo "  Managed domain: $BUNDLE_ID (${#rows[@]} configuration(s))"
   for i in "${!rows[@]}"; do
     IFS="$FS" read -r name server proto group agent user <<< "${rows[$i]}"
     local shown="${server:+server=$server}"
@@ -426,9 +426,9 @@ make_mobileconfig() {
     [ -n "$group" ] && shown="${shown:+$shown | }authgroup=$group"
     [ -n "$agent" ] && shown="${shown:+$shown | }useragent=$agent"
     [ -n "$user" ]  && shown="${shown:+$shown | }username=$user"
-    echo "  « $name » : $shown"
+    echo "  \"$name\": $shown"
   done
-  echo "  Profil non signé : macOS l'affiche comme « non signé » à l'installation manuelle ; un MDM le signe lui-même."
+  echo "  Unsigned profile: macOS shows it as \"unsigned\" on a manual install; an MDM signs it itself."
 }
 
 
@@ -438,5 +438,5 @@ case "${1:-build}" in
   build)   build_app ;;
   install) build_app; install_app ;;
   pkg)     build_app; make_pkg ;;
-  *)       echo "Usage : $0 [build|install|pkg|test|mobileconfig]"; exit 2 ;;
+  *)       echo "Usage: $0 [build|install|pkg|test|mobileconfig]"; exit 2 ;;
 esac
