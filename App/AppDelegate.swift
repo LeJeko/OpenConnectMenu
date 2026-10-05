@@ -11,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var trust: TrustInfo?
     private var busy: String?
     private var lastError: String?
+    /// The error is about reaching the helper: it goes away by itself as soon as the helper answers again.
+    private var lastErrorIsLinkRelated = false
     private var timer: Timer?
     private lazy var settingsWindow = SettingsWindowController(general: makeGeneralActions())
 
@@ -57,9 +59,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.mainMenu = main
     }
 
+    private func setError(_ message: String, linkRelated: Bool) {
+        lastError = message
+        lastErrorIsLinkRelated = linkRelated
+    }
+
     private func registerHelperIfNeeded() {
         if helperService.status == .notRegistered {
-            do { try helperService.register() } catch { lastError = L("Helper activation: %@", error.localizedDescription) }
+            do { try helperService.register() } catch { setError(L("Helper activation: %@", error.localizedDescription), linkRelated: true) }
         }
     }
 
@@ -87,6 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             status = s
             unreachableCount = 0
             helperUnreachable = false
+            if lastErrorIsLinkRelated { lastError = nil; lastErrorIsLinkRelated = false }
             if let t = await client.trustInfo() { trust = t }
             updateIcon()
         }
@@ -130,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         status = nil
         trust = nil
         if let failure {
-            lastError = L("Helper repair: %@", failure)
+            setError(L("Helper repair: %@", failure), linkRelated: true)
             if !automatic { alert(L("Could not repair the helper"), failure) }
         }
         if !automatic && helperService.status == .requiresApproval { SMAppService.openSystemSettingsLoginItems() }
@@ -253,7 +261,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             busy = nil
             if !ok {
                 let message = HelperText.localized(code)
-                lastError = message
+                setError(message, linkRelated: code == "helper_unreachable")
                 alert(L("Connection failed"), message)
             }
             if let s = await client.status() { status = s }
@@ -270,7 +278,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             busy = nil
             if !ok {
                 let message = HelperText.localized(code)
-                lastError = message
+                setError(message, linkRelated: code == "helper_unreachable")
                 alert(L("Disconnection failed"), message)
             }
             if let s = await client.status() { status = s }
