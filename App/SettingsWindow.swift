@@ -25,15 +25,40 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window?.close()
 
         let view = SettingsView(store: store, selecting: id, general: general) { [weak self] in self?.window?.close() }
-        let w = NSWindow(contentViewController: NSHostingController(rootView: view))
-        w.title = L("VPN Settings")
+        let host = NSHostingController(rootView: view)
+        let w = NSWindow(contentViewController: host)
+        w.title = L("OpenConnectMenu Settings")
         w.styleMask = [.titled, .closable]
         w.isReleasedWhenClosed = false
-        w.delegate = self
-        w.center()
+        w.setContentSize(host.view.fittingSize)   // final size before positioning, so the top edge stays where it is put
+        // The window reopens where it was left; the first time (or if that place is no longer on a screen), at the top
+        // center of the screen. The delegate is set afterwards: only a move by the user is remembered.
+        if let origin = rememberedOrigin(for: w) { w.setFrameOrigin(origin) } else { placeAtTopCenter(w) }
         window = w
         NSApp.activate(ignoringOtherApps: true)
         w.makeKeyAndOrderFront(nil)
+        w.delegate = self
+    }
+
+    private static let originKey = "settingsWindowOrigin"
+
+    /// The last position chosen by the user, if a screen still shows that part of the window.
+    private func rememberedOrigin(for w: NSWindow) -> NSPoint? {
+        guard let text = UserDefaults.standard.string(forKey: Self.originKey) else { return nil }
+        let origin = NSPointFromString(text)
+        let frame = NSRect(origin: origin, size: w.frame.size)
+        let onScreen = NSScreen.screens.contains { $0.visibleFrame.intersection(frame).width >= 100 && $0.visibleFrame.intersection(frame).height >= 50 }
+        return onScreen ? origin : nil
+    }
+
+    func windowDidMove(_ notification: Notification) {
+        guard let w = notification.object as? NSWindow, w === window else { return }
+        UserDefaults.standard.set(NSStringFromPoint(w.frame.origin), forKey: Self.originKey)
+    }
+
+    private func placeAtTopCenter(_ w: NSWindow) {
+        guard let area = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame else { w.center(); return }
+        w.setFrameTopLeftPoint(NSPoint(x: area.midX - w.frame.width / 2, y: area.maxY - 24))
     }
 
     func windowWillClose(_ notification: Notification) {

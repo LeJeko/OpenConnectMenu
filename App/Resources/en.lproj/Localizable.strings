@@ -55,7 +55,7 @@
 "Could not enable the helper" = "Could not enable the helper";
 "Could not uninstall the helper" = "Could not uninstall the helper";
 "Could not change the login item" = "Could not change the login item";
-"VPN Settings" = "VPN Settings";
+"OpenConnectMenu Settings" = "OpenConnectMenu Settings";
 "Server" = "Server";
 "Address" = "Address";
 "Authentication group" = "Authentication group";

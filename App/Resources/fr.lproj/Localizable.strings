@@ -55,7 +55,7 @@
 "Could not enable the helper" = "Activation impossible";
 "Could not uninstall the helper" = "Désinstallation impossible";
 "Could not change the login item" = "Démarrage automatique impossible";
-"VPN Settings" = "Réglages VPN";
+"OpenConnectMenu Settings" = "Réglages OpenConnectMenu";
 "Server" = "Serveur";
 "Address" = "Adresse";
 "Authentication group" = "Groupe d'authentification";
