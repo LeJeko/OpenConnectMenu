@@ -21,6 +21,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var helperUnreachable = false
     private var repairAttempted = false
     private var repairing = false
+    /// The helper has answered since the app started (or since the last repair). Until then the menu does not offer to
+    /// connect: right after an update the helper often has to be repaired first, and a connection would just fail.
+    private var helperResponded = false
+    /// Consecutive failed polls before the helper is declared unreachable. Just 1 right after an update, where the
+    /// helper is known to need a repair (brew removes its service); 5 (≈ 15 s) otherwise.
+    private var unreachableThreshold = 5
 
     // MARK: - Lifecycle
 
@@ -29,6 +35,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let menu = NSMenu()
         menu.delegate = self
         statusItem.menu = menu
+        // A different build than the last launch: the app has just been updated.
+        let lastBuild = UserDefaults.standard.string(forKey: "lastLaunchBuild")
+        if let lastBuild, lastBuild != buildStamp { unreachableThreshold = 1 }
+        UserDefaults.standard.set(buildStamp, forKey: "lastLaunchBuild")
         registerHelperIfNeeded()
         updateIcon()
         Task { await checkHelperVersion() }
@@ -83,6 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard helperService.status == .enabled else {
             unreachableCount = 0
             helperUnreachable = false
+            helperResponded = false
             return
         }
         Task { @MainActor in
@@ -93,7 +104,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             status = s
             unreachableCount = 0
+            unreachableThreshold = 5
             helperUnreachable = false
+            helperResponded = true
             if lastErrorIsLinkRelated { lastError = nil; lastErrorIsLinkRelated = false }
             if let t = await client.trustInfo() { trust = t }
             updateIcon()
@@ -101,11 +114,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// The service is "enabled" as far as macOS is concerned but does not answer. We wait for a few polls (≈ 15 s) before
-    /// concluding: the helper is started on demand and can be slow to answer (wake from sleep…).
+    /// concluding, except right after an update: the helper is started on demand and can be slow to answer (wake from sleep…).
     private func noteUnreachable() {
         guard busy == nil, !repairing else { return }
         unreachableCount += 1
-        guard unreachableCount >= 5, !helperUnreachable else { return }
+        guard unreachableCount >= unreachableThreshold, !helperUnreachable else { return }
+        unreachableThreshold = 5
         helperUnreachable = true
         let vpnWasUp = status?.connected == true
         status = nil
@@ -123,6 +137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func repairHelper(automatic: Bool) async {
         guard !repairing else { return }
         repairing = true
+        helperResponded = false
         busy = L("Repairing helper…")
         updateIcon()
         client.reset()
@@ -189,6 +204,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             add(L("Helper not reachable"))
             menu.addItem(.separator())
             add(L("Repair helper…"), #selector(repairHelperAction))
+        } else if !helperResponded {
+            // Not connected to the helper yet (just launched, just updated or just repaired): nothing to offer.
+            add(L("Starting the helper…"))
         } else if let trust, !trust.trusted {
             add(HelperText.localized(trust.code))
             menu.addItem(.separator())

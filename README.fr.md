@@ -103,6 +103,7 @@ Ne collez jamais ce secret dans une conversation ou un terminal partagé : il é
 | Se connecter / Se déconnecter | Aucun mot de passe demandé. Une alerte signale un échec. Avec plusieurs configurations, le menu propose **Se connecter à <nom>** pour chacune ; tant qu'un VPN est connecté, seule **Se déconnecter** est proposée, avec le nom de la configuration. |
 | Adresse, Depuis | L'adresse IP du tunnel et la durée de connexion. |
 | openconnect n'est pas installé | Affiché avant tout autre état si `openconnect` est introuvable. **Copier la commande d'installation…** copie `brew install openconnect`. |
+| Démarrage de l'assistant… / Réparation de l'assistant… | Affiché tant que l'app n'est pas connectée à l'assistant : juste après son lancement, et après une mise à jour, où l'assistant est réparé automatiquement. Aucune connexion n'est proposée avant qu'il réponde. |
 | Assistant injoignable → Réparer l'assistant… | Affiché quand macOS indique que l'assistant est activé mais qu'il ne répond pas. Voir [Dépannage](#dépannage). |
 | Réglages… | La fenêtre des réglages, avec deux onglets : **Configurations** (la liste et le formulaire) et **Général** (voir ci-dessous). |
 | Quitter | Quitte l'app. Un VPN connecté reste actif. |
@@ -290,7 +291,7 @@ L'interface et l'installateur existent en **anglais** (par défaut) et en **fran
 |---|---|
 | « Assistant non activé » | Cliquez sur « Activer l'assistant… ». Si l'app n'est pas dans `/Applications`, l'enregistrement peut échouer. |
 | « Assistant à autoriser » | Activez-le dans Réglages Système → Éléments de connexion et extensions. |
-| « Assistant injoignable » | Le service est enregistré mais ne répond pas. L'app le répare toute seule au bout d'une quinzaine de secondes ; sinon, utilisez **Réparer l'assistant…**. |
+| « Assistant injoignable » | Le service est enregistré mais ne répond pas. L'app le répare toute seule (tout de suite après une mise à jour, au bout d'une quinzaine de secondes sinon) ; si cela ne suffit pas, utilisez **Réparer l'assistant…**. |
 | « openconnect n'a pas encore été approuvé » ou « a changé » | Normal au premier lancement et après une mise à jour Homebrew : « Approuver openconnect… ». |
 | « openconnect n'est pas installé » | **Copier la commande d'installation…**, lancez-la dans le Terminal, puis rouvrez le menu. |
 | « openconnect (ou son vpnc-script) est introuvable » | Installation incomplète : `brew reinstall openconnect`. |

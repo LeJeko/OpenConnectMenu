@@ -103,6 +103,7 @@ Never paste this secret into a chat or a shared terminal: it is equivalent to yo
 | Connect / Disconnect | No password prompt. An alert reports a failure. With several configurations, the menu shows **Connect to <name>** for each one; while a VPN is connected only **Disconnect** is offered, and the name of the configuration is shown. |
 | Address, Since | The tunnel's IP address and how long you have been connected. |
 | openconnect is not installed | Shown before any other state if `openconnect` cannot be found. **Copy install command…** copies `brew install openconnect`. |
+| Starting the helper… / Repairing helper… | Shown while the app is not yet connected to the helper: right after it starts, and after an update, when the helper is repaired automatically. No connection is offered until the helper answers. |
 | Helper not reachable → Repair helper… | Shown when macOS says the helper is enabled but it does not answer. See [Troubleshooting](#troubleshooting). |
 | Settings… | The settings window, with two tabs: **Configurations** (the list and the form) and **General** (see below). |
 | Quit | Quits the app. A connected VPN stays up. |
@@ -289,7 +290,7 @@ The interface and the installer are available in **English** (the default) and *
 |---|---|
 | "Helper not enabled" | Click "Enable helper…". If the app is not in `/Applications`, registration may fail. |
 | "Helper needs approval" | Enable it in System Settings → Login Items & Extensions. |
-| "Helper not reachable" | The service is registered but does not answer. The app repairs it by itself after about fifteen seconds; otherwise use **Repair helper…**. |
+| "Helper not reachable" | The service is registered but does not answer. The app repairs it by itself (right away after an update, after about fifteen seconds otherwise); if that is not enough, use **Repair helper…**. |
 | "openconnect has not been approved yet" or "has changed" | Normal on first launch and after a Homebrew update: "Approve openconnect…". |
 | "openconnect is not installed" | **Copy install command…**, run it in Terminal, then reopen the menu. |
 | "openconnect (or its vpnc-script) was not found" | Incomplete install: `brew reinstall openconnect`. |
