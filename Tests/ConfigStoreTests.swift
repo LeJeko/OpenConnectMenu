@@ -222,6 +222,22 @@ struct ConfigStoreTests {
         check("slug", ConfigStore.slug("Mon VPN (travail)") == "mon-vpn-travail" && ConfigStore.slug("***") == "config" && ConfigStore.slug("Éé") == "config")
         check("name: empty or control characters only → nil", ConfigStore.cleanName(nil) == nil && ConfigStore.cleanName(" \u{0007}\n ") == nil)
 
+        // ---- verification code (RFC 6238, appendix B: the 6 last digits of the 8-digit codes)
+        let rfcSecret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"   // ASCII "12345678901234567890"
+        for (t, expected) in [(59, "287082"), (1111111109, "081804"), (1111111111, "050471"),
+                              (1234567890, "005924"), (2000000000, "279037"), (20000000000, "353130")] {
+            let got = TOTP.code(secret: rfcSecret, at: Date(timeIntervalSince1970: TimeInterval(t)))
+            check("verification code: RFC 6238 vector at t=\(t)", got == expected, "\(String(describing: got))")
+        }
+        let at = Date(timeIntervalSince1970: 59)
+        check("verification code: same code from a lowercase key, with spaces, base32: prefix or otpauth URL",
+              ["gezdgnbvgy3tqojqgezdgnbvgy3tqojq", "GEZD GNBV GY3T QOJQ GEZD GNBV GY3T QOJQ", "base32:" + rfcSecret,
+               "otpauth://totp/Account?secret=\(rfcSecret)&issuer=X"].allSatisfy { TOTP.code(secret: $0, at: at) == "287082" })
+        check("verification code: invalid secret → nil", TOTP.code(secret: "") == nil && TOTP.code(secret: "!!!") == nil && TOTP.code(secret: "1") == nil)
+        check("verification code: Base32 decoding", TOTP.base32Decode("MZXW6===") == Data("foo".utf8) && TOTP.base32Decode("MZXW6") == Data("foo".utf8) && TOTP.base32Decode("MZ=XW6") == nil)
+        check("verification code: seconds remaining", TOTP.secondsRemaining(at: Date(timeIntervalSince1970: 59)) == 1
+              && TOTP.secondsRemaining(at: Date(timeIntervalSince1970: 60)) == 30 && TOTP.secondsRemaining(at: Date(timeIntervalSince1970: 75)) == 15)
+
         print(failures == 0 ? "\n✔ \(count) checks passed" : "\n✘ \(failures) failure(s) out of \(count)")
         exit(failures == 0 ? 0 : 1)
     }

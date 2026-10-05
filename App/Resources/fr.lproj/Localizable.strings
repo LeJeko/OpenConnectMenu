@@ -99,3 +99,7 @@
 "Version" = "Version";
 "Helper enabled" = "Assistant activé";
 "The helper runs as administrator to start and stop the VPN, so that you are not asked for a password each time." = "L'assistant s'exécute en administrateur pour démarrer et arrêter le VPN, afin qu'aucun mot de passe ne vous soit demandé à chaque fois.";
+"Verification code" = "Code de vérification";
+"Invalid secret" = "Secret invalide";
+"%d s" = "%d s";
+"Copy" = "Copier";

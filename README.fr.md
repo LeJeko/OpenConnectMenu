@@ -68,6 +68,8 @@ Téléchargez `OpenConnectMenu-<version>.pkg` depuis la page des [Releases](../.
 
 Le secret est normalisé : les espaces sont retirés, les lettres passées en majuscules, et le préfixe `base32:` ainsi que les URL `otpauth://` sont acceptés.
 
+Pendant la saisie d'un **nouveau** secret TOTP, les réglages affichent sous le champ le code à 6 chiffres actuel, avec les secondes restantes et un bouton **Copier**. C'est ce que demande un fournisseur d'identité pour vérifier une nouvelle méthode d'authentification : inutile d'ouvrir une autre app juste pour lire le code. Le code n'est montré que tant que le secret diffère de celui déjà enregistré : une fois enregistré, les réglages n'affichent plus jamais de code.
+
 Si vous utilisiez une version antérieure à la 2.0, vos réglages deviennent une configuration appelée **Par défaut**, avec le même mot de passe et le même secret TOTP : rien à ressaisir.
 
 ### Obtenir le secret TOTP
@@ -76,6 +78,21 @@ Le secret n'est affiché qu'une fois, quand vous enrôlez une nouvelle app d'aut
 
 - Si le secret est déjà dans l'app **Mots de passe** d'Apple, ouvrez l'entrée, cliquez sur le champ du code de vérification, puis sur **Copy Setup URL**, et collez l'URL dans les réglages. Le même secret produit alors les mêmes codes aux deux endroits : pas besoin de nouvelle méthode.
 - La plupart des apps d'authentification ne peuvent pas révéler le secret d'une entrée existante. Notez-le au moment de l'enrôlement.
+
+#### Si vous vous connectez avec Microsoft Entra ID
+
+Entra ID permet d'ajouter soi-même une méthode d'authentification, et il affiche le secret à ce moment-là. En ajouter une réservée à cette app laisse intacte celle que vous utilisez déjà. Votre organisation doit autoriser les apps d'authentification.
+
+1. Ouvrez <https://accounts.microsoft.com> et connectez-vous avec votre compte professionnel ou scolaire, puis allez dans **Account → Security** et ajoutez une méthode de connexion.
+2. Choisissez **Microsoft Authenticator**.
+3. Sélectionnez **Set up with a different authentication app**. C'est le choix important : il fait afficher une clé par Entra ID, au lieu de lier la méthode à l'app de Microsoft.
+4. Cliquez sur **Can't scan the QR code?** et copiez la clé affichée.
+5. Collez cette clé dans le champ **Secret TOTP** des réglages d'OpenConnectMenu (les espaces sont ignorés). Le code actuel s'affiche juste en dessous.
+6. Revenez sur la page web et cliquez sur **Next** : Entra ID demande un code à 6 chiffres pour vérifier la méthode. Saisissez le code affiché dans les réglages, puis cliquez sur **Enregistrer** dans les réglages.
+
+Facultatif : collez aussi la même clé dans l'entrée correspondante de l'app **Mots de passe** d'Apple (ouvrez l'entrée, **Modifier**, ajoutez la clé comme code de vérification) : Safari remplit alors le code sur les pages d'Entra ID, et les deux endroits produisent les mêmes codes.
+
+Entra ID donne le même nom à toutes ces méthodes et ne permet pas de les renommer : notez laquelle sert au VPN.
 
 Ne collez jamais ce secret dans une conversation ou un terminal partagé : il équivaut à votre second facteur. S'il a été exposé, supprimez cette méthode dans les réglages de sécurité de votre compte et enrôlez-en une nouvelle.
 
@@ -353,7 +370,7 @@ Les identifiants (`@BUNDLE_ID@`, `@HELPER_LABEL@`, `@PKG_ID@`, `@TEAM_ID@`) sont
 - **Nettoyage manuel** : si l'assistant est interrompu en plein nettoyage, des routes d'exclusion ou des réglages DNS peuvent rester en place. Couper puis rallumer le réseau remet tout à zéro.
 - **Un seul VPN à la fois** : la détection du tunnel suppose qu'aucune autre interface `utun` n'a une adresse IPv4 point à point pointant sur elle-même. Pour la même raison, l'app ne passe pas d'une configuration à une autre : déconnectez-vous d'abord.
 - **Seul AnyConnect est testé.** Le réglage de protocole propose les sept protocoles d'openconnect, et l'assistant vérifie qu'openconnect les accepte, mais aucune connexion n'a été essayée avec autre chose qu'un serveur AnyConnect. Le déroulement de l'authentification et le sens du « groupe d'authentification » diffèrent selon les protocoles : attendez-vous à des aspérités, et signalez-les.
-- **Le TOTP est obligatoire** : l'assistant configure toujours openconnect avec un jeton TOTP. Les autres seconds facteurs ne sont pas gérés.
+- **Le TOTP est obligatoire** : l'assistant configure toujours openconnect avec un jeton TOTP. Les autres seconds facteurs ne sont pas gérés. Seuls les paramètres standard (SHA-1, 6 chiffres, 30 secondes) sont gérés : `digits`, `period` et `algorithm` d'une URL `otpauth://` sont ignorés, par openconnect comme par le code de vérification affiché dans les réglages.
 - **Homebrew uniquement** : `openconnect` est cherché dans `/opt/homebrew` (Apple silicon), puis `/usr/local` (Intel).
 - **La moitié Intel n'est pas testée** : la tranche `x86_64` compile, est signée et passe les contrôles `lipo`/`codesign`, mais n'a jamais été exécutée. À ma connaissance, macOS 26 est la dernière version qui gère les Mac Intel : cette tranche vise macOS 13 à 26.
 - **Testé** sur Apple silicon avec macOS 27 (bêta), y compris `brew upgrade` et un profil de configuration installé à la main, face à un serveur AnyConnect. Pas testé avec un MDM, avec un autre protocole, ni sur un second Mac vierge.

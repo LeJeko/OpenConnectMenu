@@ -68,6 +68,8 @@ Needed once.
 
 The secret is normalized: spaces are removed, letters upper-cased, and the `base32:` prefix and `otpauth://` URLs are accepted.
 
+While you are entering a **new** TOTP secret, the settings show the current 6-digit code under the field, with the seconds left and a **Copy** button. This is what an identity provider asks for to verify a new authenticator method, so you do not need another app just to read the code. The code is shown only while the secret differs from the one already stored: once saved, the settings never show codes again.
+
 If you used a version before 2.0, your settings become a configuration called **Default**, with the same password and TOTP secret: nothing to enter again.
 
 ### Getting the TOTP secret
@@ -76,6 +78,21 @@ The secret is shown once, when you enroll a new authenticator app with your VPN'
 
 - If the secret is already in Apple's **Passwords** app, open the entry, click the verification code field, then **Copy Setup URL**, and paste the URL into the settings. The same secret then produces the same codes in both places, so no new method is needed.
 - Most authenticator apps cannot reveal the secret of an existing entry. Capture it when you enroll.
+
+#### If you sign in with Microsoft Entra ID
+
+Entra ID lets you add an authenticator method yourself, and it shows you the secret when you do. Adding one just for this app leaves the method you already use untouched. Your organization must allow authenticator apps.
+
+1. Open <https://accounts.microsoft.com> and sign in with your work or school account, then go to **Account → Security** and add a sign-in method.
+2. Choose **Microsoft Authenticator**.
+3. Select **Set up with a different authentication app**. This is the important choice: it makes Entra ID show a key instead of tying the method to Microsoft's own app.
+4. Click **Can't scan the QR code?** and copy the key that is displayed.
+5. Paste that key into the **TOTP secret** field of OpenConnectMenu's settings (spaces are ignored). The current code appears right below the field.
+6. Back on the web page, click **Next**: Entra ID asks for a 6-digit code to verify the method. Type the code shown in the settings, then click **Save** in the settings.
+
+Optionally, also paste the same key into the matching entry of Apple's **Passwords** app (open the entry, **Edit**, add the key as a verification code): Safari then fills in the code on Entra ID's pages, and both places produce the same codes.
+
+Entra ID gives all such methods the same name and does not let you rename them, so note which one is for the VPN.
 
 Never paste this secret into a chat or a shared terminal: it is equivalent to your second factor. If it has been exposed, delete that method in your account's security settings and enroll a new one.
 
@@ -352,7 +369,7 @@ Identifiers (`@BUNDLE_ID@`, `@HELPER_LABEL@`, `@PKG_ID@`, `@TEAM_ID@`) are place
 - **Manual cleanup**: if the helper is interrupted in the middle of the cleanup, exclusion routes or DNS settings may stay in place. Turning the network off and on again resets everything.
 - **One VPN at a time**: tunnel detection assumes no other `utun` interface has a point-to-point IPv4 address pointing at itself. For the same reason the app does not switch from one configuration to another: disconnect first.
 - **Only AnyConnect is tested.** The protocol setting offers all seven openconnect protocols, and the helper checks that openconnect accepts them, but no connection has been tried with anything other than an AnyConnect server. The authentication flow and the meaning of the "authentication group" differ between protocols, so expect rough edges and please report them.
-- **TOTP is required**: the helper always configures openconnect with a TOTP token. Other second factors are not supported.
+- **TOTP is required**: the helper always configures openconnect with a TOTP token. Other second factors are not supported. Only the standard parameters (SHA-1, 6 digits, 30 seconds) are supported: the `digits`, `period` and `algorithm` of an `otpauth://` URL are ignored, both by openconnect and by the verification code shown in the settings.
 - **Homebrew only**: `openconnect` is looked up in `/opt/homebrew` (Apple silicon), then `/usr/local` (Intel).
 - **The Intel half is untested**: the `x86_64` slice compiles, is signed and passes the `lipo`/`codesign` checks, but has never been run. As far as I know macOS 26 is the last release that supports Intel Macs, so that slice targets macOS 13 to 26.
 - **Tested** on Apple silicon with macOS 27 (beta), including `brew upgrade` and a configuration profile installed by hand, against an AnyConnect server. Not tested with an MDM, with another protocol, nor on a second clean Mac.

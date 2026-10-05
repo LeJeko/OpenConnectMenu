@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import Security
 
 /// Passwords and TOTP secret: Keychain. Everything else: UserDefaults.
@@ -46,6 +47,8 @@ struct SettingsView: View {
     var onClose: () -> Void
 
     private let store: ConfigStore
+    /// TOTP secrets as stored when the window opened: the verification code is only shown for a secret that differs.
+    private let initialTOTPs: [String: String]
 
     @State private var configs: [VPNConfig]
     @State private var selection: String
@@ -64,7 +67,9 @@ struct SettingsView: View {
         _configs = State(initialValue: list)
         _selection = State(initialValue: list.first(where: { $0.id == selecting })?.id ?? list.first?.id ?? "")
         _passwords = State(initialValue: Dictionary(uniqueKeysWithValues: list.map { ($0.id, store.password(for: $0.id)) }))
-        _totps = State(initialValue: Dictionary(uniqueKeysWithValues: list.map { ($0.id, store.totp(for: $0.id)) }))
+        let stored = Dictionary(uniqueKeysWithValues: list.map { ($0.id, store.totp(for: $0.id)) })
+        _totps = State(initialValue: stored)
+        initialTOTPs = stored
     }
 
     private var index: Int? { configs.firstIndex { $0.id == selection } }
@@ -170,6 +175,11 @@ struct SettingsView: View {
                         .disabled(c.isLocked(.username))
                     SecureField("Password", text: secret($passwords))
                     SecureField("TOTP secret", text: secret($totps))
+                    // Shown only while a new secret is being entered (to complete the identity provider's verification
+                    // step); once saved, the settings never show codes again.
+                    if let entered = totps[c.id], !entered.isEmpty, entered != initialTOTPs[c.id] {
+                        VerificationCodeRow(secret: entered)
+                    }
                 } header: {
                     Text("Account")
                 } footer: {
@@ -226,5 +236,70 @@ struct SettingsView: View {
             store.setTOTP(totps[c.id] ?? "", for: c.id)
         }
         onClose()
+    }
+}
+
+/// The live verification code of a secret being entered, with the seconds left and a Copy button.
+struct VerificationCodeRow: View {
+    let secret: String
+
+    var body: some View {
+        if TOTP.code(secret: secret) != nil {
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                let code = TOTP.code(secret: secret, at: context.date) ?? ""
+                LabeledContent("Verification code") {
+                    HStack(spacing: 10) {
+                        Text(verbatim: Self.grouped(code))
+                            .font(.system(size: 19, weight: .semibold, design: .monospaced))
+                            .fixedSize()
+                            .textSelection(.enabled)
+                        CountdownRing(remaining: TOTP.secondsRemaining(at: context.date))
+                        Button("Copy") { Self.copy(code) }
+                    }
+                }
+            }
+        } else {
+            LabeledContent("Verification code") { Text("Invalid secret").foregroundStyle(.secondary) }
+        }
+    }
+
+    /// "123456" → "123 456".
+    private static func grouped(_ code: String) -> String {
+        let half = code.count / 2
+        return code.prefix(half) + " " + code.dropFirst(half)
+    }
+
+    /// The pasteboard entry is marked "concealed" so that clipboard managers do not keep it.
+    private static func copy(_ code: String) {
+        let pasteboard = NSPasteboard.general
+        let concealed = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
+        pasteboard.clearContents()
+        pasteboard.declareTypes([.string, concealed], owner: nil)
+        pasteboard.setString(code, forType: .string)
+        pasteboard.setString("", forType: concealed)
+    }
+}
+
+/// The time left before the code changes: a ring that empties, with the seconds inside; orange for the last 5 seconds.
+struct CountdownRing: View {
+    let remaining: Int
+
+    var body: some View {
+        let low = remaining <= 5
+        ZStack {
+            Circle().stroke(.quaternary, lineWidth: 3)
+            Circle()
+                .trim(from: 0, to: CGFloat(remaining) / CGFloat(TOTP.period))
+                .stroke(low ? Color.orange : Color.accentColor, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            Text(verbatim: "\(remaining)")
+                .font(.system(size: 10, weight: .medium))
+                .monospacedDigit()
+                .foregroundStyle(low ? Color.orange : Color.secondary)
+        }
+        .frame(width: 26, height: 26)
+        .help(L("%d s", remaining))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L("%d s", remaining))
     }
 }

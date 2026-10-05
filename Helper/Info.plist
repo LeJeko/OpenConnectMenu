@@ -7,8 +7,8 @@
 	<key>CFBundleName</key>
 	<string>OpenConnectMenu Helper</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.0</string>
+	<string>2.1</string>
 	<key>CFBundleVersion</key>
-	<string>12</string>
+	<string>14</string>
 </dict>
 </plist>

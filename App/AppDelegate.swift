@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        installEditMenu()
         let menu = NSMenu()
         menu.delegate = self
         statusItem.menu = menu
@@ -31,6 +32,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Task { await checkHelperVersion() }
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in self?.refresh() }
         refresh()
+    }
+
+    /// A menu-bar app has no menu bar of its own, and with no main menu the standard shortcuts (Cmd+V, Cmd+C, Cmd+A…)
+    /// do nothing in the settings fields. This invisible Edit menu supplies them; the responder chain does the rest.
+    private func installEditMenu() {
+        let main = NSMenu()
+        let item = NSMenuItem()
+        main.addItem(item)
+        let edit = NSMenu(title: "Edit")
+        for (title, action, key, mods) in [
+            ("Undo", Selector(("undo:")), "z", NSEvent.ModifierFlags.command),
+            ("Redo", Selector(("redo:")), "z", [.command, .shift]),
+            ("Cut", #selector(NSText.cut(_:)), "x", .command),
+            ("Copy", #selector(NSText.copy(_:)), "c", .command),
+            ("Paste", #selector(NSText.paste(_:)), "v", .command),
+            ("Select All", #selector(NSText.selectAll(_:)), "a", .command),
+        ] as [(String, Selector, String, NSEvent.ModifierFlags)] {
+            let i = NSMenuItem(title: title, action: action, keyEquivalent: key)
+            i.keyEquivalentModifierMask = mods
+            edit.addItem(i)
+        }
+        item.submenu = edit
+        NSApp.mainMenu = main
     }
 
     private func registerHelperIfNeeded() {

@@ -303,7 +303,7 @@ enum BuildConfig {
 SWIFT
   echo "▸ Compiling the tests"
   swiftc -O -swift-version 5 -parse-as-library -target "$(uname -m)-apple-macos$MIN_MACOS" \
-    Shared/Shared.swift "$out/BuildConfig.swift" App/ConfigModel.swift App/ConfigStore.swift \
+    Shared/Shared.swift "$out/BuildConfig.swift" App/ConfigModel.swift App/ConfigStore.swift App/TOTP.swift \
     Tests/ConfigStoreTests.swift -o "$out/tests"
   echo "▸ Running"
   "$out/tests"
