@@ -52,8 +52,12 @@ Téléchargez `OpenConnectMenu-<version>.pkg` depuis la page des [Releases](../.
 
 À faire une seule fois.
 
-1. **Autoriser l'assistant.** Au premier lancement, l'app enregistre son assistant et macOS affiche une notification. Allez dans **Réglages Système → Général → Éléments de connexion et extensions** et activez l'assistant *OpenConnectMenu*. Le menu propose aussi *Ouvrir Éléments de connexion…*.
-2. **Approuver openconnect.** Le menu affiche « openconnect n'a pas encore été approuvé ». Cliquez sur **Approuver openconnect…**, vérifiez le chemin et la version, puis saisissez votre mot de passe administrateur. C'est le seul mot de passe administrateur qu'on vous demandera. Voir [Épinglage des binaires](#épinglage-des-binaires).
+0. **Repérer l'icône.** L'installateur ouvre l'app tout seul. Elle n'a ni fenêtre ni icône dans le Dock : son icône, un **cadenas barré**, se trouve tout à gauche de la partie droite de la barre des menus, à côté des autres icônes de la barre des menus. (Sur un Mac avec encoche et une barre des menus bien remplie, elle peut être cachée derrière l'encoche : quittez une autre app de la barre des menus, ou utilisez un outil comme Bartender ou Ice pour la faire apparaître.)
+1. **Autoriser l'assistant.** Au premier lancement, l'app enregistre son assistant et ouvre toute seule **Réglages Système → Général → Éléments de connexion et extensions** : activez l'assistant *OpenConnectMenu*. Si vous avez fermé ce volet, le menu propose *Ouvrir Éléments de connexion…*.
+2. **Approuver openconnect.** L'assistant tourne avec les droits d'administrateur : il ne lance donc que l'`openconnect` exact que vous avez approuvé. Une fois l'assistant autorisé, une fenêtre **« Approuver openconnect ? »** s'affiche toute seule et indique de quel `openconnect` il s'agit (son emplacement et sa version).
+   - Cliquez sur **Approuver**, puis saisissez votre mot de passe administrateur. C'est le seul mot de passe administrateur que l'app vous demande.
+   - Si vous annulez, rien n'est cassé : le menu affiche « openconnect n'a pas encore été approuvé » avec une entrée **Approuver openconnect…**, et la fenêtre revient au prochain démarrage de l'app.
+   - On vous le redemandera après un `brew upgrade openconnect`, car Homebrew installe alors un autre fichier. Le détail de la raison : [Épinglage des binaires](#épinglage-des-binaires).
 3. **Renseigner les réglages.** Menu → **Réglages…**. La liste de gauche contient vos configurations (**+** et **−** pour en ajouter ou en retirer une ; une configuration apportée par un profil de configuration porte un cadenas et ne peut pas être retirée). Pour la configuration choisie :
 
 | Champ | Valeur |
@@ -83,12 +87,30 @@ Le secret n'est affiché qu'une fois, quand vous enrôlez une nouvelle app d'aut
 
 Entra ID permet d'ajouter soi-même une méthode d'authentification, et il affiche le secret à ce moment-là. En ajouter une réservée à cette app laisse intacte celle que vous utilisez déjà. Votre organisation doit autoriser les apps d'authentification.
 
-1. Ouvrez <https://accounts.microsoft.com> et connectez-vous avec votre compte professionnel ou scolaire, puis allez dans **Account → Security** et ajoutez une méthode de connexion.
-2. Choisissez **Microsoft Authenticator**.
-3. Sélectionnez **Set up with a different authentication app**. C'est le choix important : il fait afficher une clé par Entra ID, au lieu de lier la méthode à l'app de Microsoft.
-4. Cliquez sur **Can't scan the QR code?** et copiez la clé affichée.
-5. Collez cette clé dans le champ **Secret TOTP** des réglages d'OpenConnectMenu (les espaces sont ignorés). Le code actuel s'affiche juste en dessous.
-6. Revenez sur la page web et cliquez sur **Next** : Entra ID demande un code à 6 chiffres pour vérifier la méthode. Saisissez le code affiché dans les réglages, puis cliquez sur **Enregistrer** dans les réglages.
+> **Attention.** Entra ID vous oriente sans cesse vers sa propre app Microsoft Authenticator, et à plusieurs étapes la sortie est **un petit lien**, pas un bouton. Les liens à repérer sont dans les cadres orange ci-dessous. Cliquez sur une image pour l'agrandir. (L'interface d'Entra ID est en anglais ici, comme sur la plupart des comptes ; les libellés sont donnés tels qu'affichés.)
+
+1. Ouvrez <https://accounts.microsoft.com> et connectez-vous avec votre compte professionnel ou scolaire, puis allez dans **Account → Security** (Security info) et cliquez sur **Add sign-in method**.
+
+   <a href="assets/entra-id/entra-1-add-sign-in-method.png"><img src="assets/entra-id/thumbs/entra-1-add-sign-in-method.png" width="260" alt="Page Security info avec le bouton Add sign-in method encadré"></a>
+
+2. Choisissez **Microsoft Authenticator** (c'est l'entrée qui gère les codes à usage unique).
+
+   <a href="assets/entra-id/entra-2-microsoft-authenticator.png"><img src="assets/entra-id/thumbs/entra-2-microsoft-authenticator.png" width="260" alt="Fenêtre Add a sign-in method avec Microsoft Authenticator encadré"></a>
+
+3. Entra ID vous demande maintenant d'**installer** l'app de Microsoft. Ne le faites pas : cliquez sur le petit lien **Set up a different authentication app**, sous les boutons Google Play et App Store.
+
+   <a href="assets/entra-id/entra-3-different-authentication-app.png"><img src="assets/entra-id/thumbs/entra-3-different-authentication-app.png" width="260" alt="Fenêtre Install Microsoft Authenticator avec le lien Set up a different authentication app encadré"></a>
+
+4. Sur **Set up your account in app**, cliquez sur **Next**.
+
+   <a href="assets/entra-id/entra-4-set-up-account.png"><img src="assets/entra-id/thumbs/entra-4-set-up-account.png" width="260" alt="Fenêtre Set up your account in app avec Next encadré"></a>
+
+5. Sur **Scan the QR code**, ne scannez rien : cliquez sur le petit lien **Can't scan the QR code?** et copiez la clé qu'Entra ID affiche ensuite.
+
+   <a href="assets/entra-id/entra-5-cant-scan-qr-code.png"><img src="assets/entra-id/thumbs/entra-5-cant-scan-qr-code.png" width="260" alt="Fenêtre Scan the QR code avec le lien Can't scan the QR code encadré"></a>
+
+6. Collez cette clé dans le champ **Secret TOTP** des réglages d'OpenConnectMenu (les espaces sont ignorés). Le code actuel s'affiche juste en dessous.
+7. Revenez sur la page web et cliquez sur **Next** : Entra ID demande un code à 6 chiffres pour vérifier la méthode. Saisissez le code affiché dans les réglages, puis cliquez sur **Enregistrer** dans les réglages.
 
 Facultatif : collez aussi la même clé dans l'entrée correspondante de l'app **Mots de passe** d'Apple (ouvrez l'entrée, **Modifier**, ajoutez la clé comme code de vérification) : Safari remplit alors le code sur les pages d'Entra ID, et les deux endroits produisent les mêmes codes.
 
@@ -101,7 +123,7 @@ Ne collez jamais ce secret dans une conversation ou un terminal partagé : il é
 | Entrée du menu | Effet |
 |---|---|
 | Se connecter / Se déconnecter | Aucun mot de passe demandé. Une alerte signale un échec. Avec plusieurs configurations, le menu propose **Se connecter à <nom>** pour chacune ; tant qu'un VPN est connecté, seule **Se déconnecter** est proposée, avec le nom de la configuration. |
-| Adresse, Depuis | L'adresse IP du tunnel et la durée de connexion. |
+| Adresse, Depuis | L'adresse IP du tunnel et la durée de connexion. Le menu se met à jour tant qu'il est ouvert : la durée continue de défiler, et un changement d'état (assistant qui démarre ou se répare, connexion, déconnexion) s'affiche sans le fermer. |
 | openconnect n'est pas installé | Affiché avant tout autre état si `openconnect` est introuvable. **Copier la commande d'installation…** copie `brew install openconnect`. |
 | Démarrage de l'assistant… / Réparation de l'assistant… | Affiché tant que l'app n'est pas connectée à l'assistant : juste après son lancement, et après une mise à jour, où l'assistant est réparé automatiquement. Aucune connexion n'est proposée avant qu'il réponde. |
 | Assistant injoignable → Réparer l'assistant… | Affiché quand macOS indique que l'assistant est activé mais qu'il ne répond pas. Voir [Dépannage](#dépannage). |
@@ -342,6 +364,7 @@ brew uninstall --cask openconnectmenu          # ajoutez --zap pour supprimer au
 ├── Icon/                  make-icon.swift, aperçu et iconset
 ├── pkg-scripts/           preinstall, postinstall
 ├── pkg-resources/         Écran d'accueil et textes de l'installateur (en, fr, repli anglais)
+├── assets/entra-id/       Captures des étapes de Microsoft Entra ID (taille réelle et vignettes) utilisées par le README
 ├── pkg-distribution.xml.in
 ├── Shared/Shared.swift    Constantes, exigences de signature, types et protocole XPC
 ├── Tests/                 Tests unitaires de la logique des configurations (./build.sh test)

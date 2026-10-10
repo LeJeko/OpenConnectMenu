@@ -8,6 +8,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let helperService = SMAppService.daemon(plistName: Constants.helperPlist)
 
     private var status: VPNStatus?
+    /// When `status` was received: the uptime shown in the menu goes on counting from it.
+    private var statusReceivedAt = Date()
+    private var liveMenuTimer: Timer?
     private var trust: TrustInfo?
     private var busy: String?
     private var lastError: String?
@@ -42,7 +45,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         registerHelperIfNeeded()
         updateIcon()
         Task { await checkHelperVersion() }
-        timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in self?.refresh() }
+        // In the .common modes, so that the state keeps being polled (and the open menu keeps updating) while a menu is open.
+        let poll = Timer(timeInterval: 3, repeats: true) { [weak self] _ in self?.refresh() }
+        RunLoop.main.add(poll, forMode: .common)
+        timer = poll
         refresh()
     }
 
@@ -74,10 +80,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         lastErrorIsLinkRelated = linkRelated
     }
 
+    /// The "Approve openconnect?" dialog has already been shown by itself during this launch.
+    private var approvalOffered = false
+
     private func registerHelperIfNeeded() {
-        if helperService.status == .notRegistered {
-            do { try helperService.register() } catch { setError(L("Helper activation: %@", error.localizedDescription), linkRelated: true) }
-        }
+        guard helperService.status == .notRegistered else { return }
+        // A fresh registration is not an update of a helper that needs repairing: no immediate repair, which could undo
+        // the approval the user is about to give.
+        unreachableThreshold = 5
+        do { try helperService.register() } catch { setError(L("Helper activation: %@", error.localizedDescription), linkRelated: true) }
+        // First registration: macOS waits for the user to allow the helper. The pane is opened right away instead of
+        // leaving a banner that is easy to miss.
+        if helperService.status == .requiresApproval { SMAppService.openSystemSettingsLoginItems() }
+    }
+
+    /// First run: once the helper answers and openconnect has never been approved, show the "Approve openconnect?" dialog
+    /// by itself (once per launch), so that no menu click is needed. A binary that has CHANGED since it was approved
+    /// (Homebrew update) is not offered automatically: that stays an explicit menu action.
+    private func offerFirstApprovalIfNeeded() {
+        guard !approvalOffered, busy == nil, !repairing, let t = trust,
+              !t.trusted, t.code == "oc_not_approved", !t.openconnectPath.isEmpty else { return }
+        approvalOffered = true
+        approveTrust()
     }
 
     /// If an old helper is still running after an update, we restart it.
@@ -102,7 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 updateIcon()
                 return
             }
-            status = s
+            setStatus(s)
             unreachableCount = 0
             unreachableThreshold = 5
             helperUnreachable = false
@@ -110,6 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if lastErrorIsLinkRelated { lastError = nil; lastErrorIsLinkRelated = false }
             if let t = await client.trustInfo() { trust = t }
             updateIcon()
+            offerFirstApprovalIfNeeded()
         }
     }
 
@@ -161,6 +186,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refresh()
     }
 
+    private func setStatus(_ s: VPNStatus) {
+        status = s
+        statusReceivedAt = Date()
+    }
+
     private func updateIcon() {
         let name: String
         if busy != nil { name = "lock.rotation" }
@@ -173,16 +203,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Menu
 
+    /// One line of the menu, described without any NSMenuItem: it can be compared with what is displayed.
+    private struct MenuEntry {
+        var title = ""
+        var action: Selector?
+        var configID: String?
+        var isSeparator = false
+        var targetsApp = false
+    }
+
+    /// Menu bar menus are rebuilt when they open, and then, while open, once a second: a change of state (helper
+    /// starting, repaired, connected…) shows up without closing the menu, and the connection time keeps counting.
     func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
-        @discardableResult
-        func add(_ title: String, _ action: Selector? = nil, enabled: Bool = true) -> NSMenuItem {
-            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-            item.target = self
-            item.isEnabled = enabled && (action != nil)
-            menu.addItem(item)
-            return item
+        apply(menuEntries(), to: menu)
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        liveMenuTimer?.invalidate()
+        let t = Timer(timeInterval: 1, repeats: true) { [weak self, weak menu] _ in
+            guard let self, let menu else { return }
+            self.apply(self.menuEntries(), to: menu)
         }
+        RunLoop.main.add(t, forMode: .common)
+        liveMenuTimer = t
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        liveMenuTimer?.invalidate()
+        liveMenuTimer = nil
+    }
+
+    /// Same shape as what is displayed: only the titles that changed are updated, in place (no flicker, the highlighted
+    /// line is kept). Otherwise the menu is rebuilt.
+    private func apply(_ entries: [MenuEntry], to menu: NSMenu) {
+        let items = menu.items
+        let sameShape = items.count == entries.count && zip(items, entries).allSatisfy { item, e in
+            item.isSeparatorItem == e.isSeparator && item.action == e.action
+                && (item.representedObject as? String) == e.configID
+        }
+        if sameShape {
+            for (item, e) in zip(items, entries) where !e.isSeparator && item.title != e.title { item.title = e.title }
+            return
+        }
+        menu.removeAllItems()
+        for e in entries {
+            if e.isSeparator { menu.addItem(.separator()); continue }
+            let item = NSMenuItem(title: e.title, action: e.action, keyEquivalent: "")
+            item.target = e.targetsApp ? NSApp : self
+            item.isEnabled = e.action != nil
+            item.representedObject = e.configID
+            menu.addItem(item)
+        }
+    }
+
+    private func menuEntries() -> [MenuEntry] {
+        var entries: [MenuEntry] = []
+        @discardableResult
+        func add(_ title: String, _ action: Selector? = nil) -> Int {
+            entries.append(MenuEntry(title: title, action: action))
+            return entries.count - 1
+        }
+        func separator() { entries.append(MenuEntry(isSeparator: true)) }
 
         let helperState = helperService.status
         if let busy {
@@ -190,26 +271,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else if !Homebrew.openConnectInstalled {
             // Detected on the app side, even before the helper is authorized.
             add(L("openconnect is not installed"))
-            menu.addItem(.separator())
+            separator()
             add(L("Copy install command…"), #selector(showInstallCommand))
         } else if helperState == .requiresApproval {
             add(L("Helper needs approval in System Settings"))
-            menu.addItem(.separator())
+            separator()
             add(L("Open Login Items…"), #selector(openLoginItems))
         } else if helperState != .enabled {
             add(L("Helper not enabled"))
-            menu.addItem(.separator())
+            separator()
             add(L("Enable helper…"), #selector(activateHelper))
         } else if helperUnreachable {
             add(L("Helper not reachable"))
-            menu.addItem(.separator())
+            separator()
             add(L("Repair helper…"), #selector(repairHelperAction))
         } else if !helperResponded {
             // Not connected to the helper yet (just launched, just updated or just repaired): nothing to offer.
             add(L("Starting the helper…"))
         } else if let trust, !trust.trusted {
             add(HelperText.localized(trust.code))
-            menu.addItem(.separator())
+            separator()
             if trust.openconnectPath.isEmpty {
                 // Nothing to approve: openconnect (or its vpnc-script) cannot be found.
                 add(L("Copy install command…"), #selector(showInstallCommand))
@@ -224,34 +305,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             } else {
                 add(L("VPN: connected"))
             }
-            add(L("Address: %@", s.tunnelIP), nil)
-            add(L("Since: %@", format(uptime: s.uptime)), nil)
-            menu.addItem(.separator())
+            add(L("Address: %@", s.tunnelIP))
+            add(L("Since: %@", format(uptime: s.uptime + max(0, Date().timeIntervalSince(statusReceivedAt)))))
+            separator()
             add(L("Disconnect"), #selector(disconnect))
         } else {
             add(L("VPN: disconnected"))
-            menu.addItem(.separator())
+            separator()
             // One item per configuration; with a single one (or none: the settings then open), "Connect".
             let usable = ConfigStore.shared.menuConfigs()
             if usable.count > 1 {
                 for c in usable {
-                    add(L("Connect to %@", c.name), #selector(connectConfig(_:))).representedObject = c.id
+                    entries[add(L("Connect to %@", c.name), #selector(connectConfig(_:)))].configID = c.id
                 }
             } else {
-                add(L("Connect"), #selector(connectConfig(_:))).representedObject = usable.first?.id
+                entries[add(L("Connect"), #selector(connectConfig(_:)))].configID = usable.first?.id
             }
         }
 
         if let lastError, busy == nil {
-            menu.addItem(.separator())
-            add("⚠️ " + lastError.split(separator: "\n").first.map(String.init)!, nil)
+            separator()
+            add("⚠️ " + lastError.split(separator: "\n").first.map(String.init)!)
         }
 
-        menu.addItem(.separator())
+        separator()
         add(L("Settings…"), #selector(openSettings))
-        menu.addItem(.separator())
-        add(L("Quit"), #selector(NSApplication.terminate(_:)))
-        menu.items.last?.target = NSApp
+        separator()
+        entries[add(L("Quit"), #selector(NSApplication.terminate(_:)))].targetsApp = true
+        return entries
     }
 
     private func format(uptime: Double) -> String {
@@ -282,7 +363,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 setError(message, linkRelated: code == "helper_unreachable")
                 alert(L("Connection failed"), message)
             }
-            if let s = await client.status() { status = s }
+            if let s = await client.status() { setStatus(s) }
             updateIcon()
         }
     }
@@ -299,7 +380,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 setError(message, linkRelated: code == "helper_unreachable")
                 alert(L("Disconnection failed"), message)
             }
-            if let s = await client.status() { status = s }
+            if let s = await client.status() { setStatus(s) }
             updateIcon()
         }
     }

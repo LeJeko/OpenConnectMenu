@@ -3,12 +3,12 @@
 #  1. restart the helper. The old process is still running the old code; macOS notices
 #     that the file on disk has changed and the app then refuses to talk to it
 #     ("the helper is unreachable"). launchd restarts it with the new binary.
-#  2. reopen the app if it was running before the update (marker written by preinstall) or if
-#     this is a reinstall (openconnect approval already recorded): this is the case for
-#     "brew upgrade", which quits the app and uninstalls the old version before installing.
+#  2. open the app for the user who is logged in: it was running before the update (marker written
+#     by preinstall), or this is a reinstall ("brew upgrade" quits the app and uninstalls the old
+#     version before installing), or this is a first installation, where opening the app is what
+#     makes it register its helper and ask for the approvals.
 LABEL=@HELPER_LABEL@
 MARK=/private/tmp/@BUNDLE_ID@.relaunch
-TRUST="/Library/Application Support/OpenConnectMenu/trust.json"
 
 # If the helper is not (yet) registered, there is nothing to restart.
 if launchctl print "system/$LABEL" >/dev/null 2>&1; then
@@ -19,7 +19,7 @@ uid=""
 if [ -f "$MARK" ]; then
     uid=$(cat "$MARK")
     rm -f "$MARK"
-elif [ -f "$TRUST" ]; then
+else
     uid=$(stat -f %u /dev/console 2>/dev/null)   # user of the open session
 fi
 

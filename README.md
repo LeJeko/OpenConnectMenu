@@ -52,8 +52,12 @@ Download `OpenConnectMenu-<version>.pkg` from the [Releases](../../releases) pag
 
 Needed once.
 
-1. **Allow the helper.** On first launch the app registers its helper and macOS shows a notification. Go to **System Settings → General → Login Items & Extensions** and enable the *OpenConnectMenu* helper. The menu also offers *Open Login Items…*.
-2. **Approve openconnect.** The menu shows "openconnect has not been approved yet". Click **Approve openconnect…**, check the path and version, then enter your administrator password. This is the only administrator password you are ever asked for. See [Binary pinning](#binary-pinning).
+0. **Find the icon.** The installer opens the app by itself. It has no window and no Dock icon: its icon, a **crossed-out padlock**, sits at the far left of the right-hand part of the menu bar, next to the other menu bar icons. (On a Mac with a notch and a crowded menu bar it can be hidden behind the notch: quit another menu bar app, or use a tool such as Bartender or Ice to reveal it.)
+1. **Allow the helper.** On first launch the app registers its helper and opens **System Settings → General → Login Items & Extensions** by itself: enable the *OpenConnectMenu* helper. If you closed that pane, the menu offers *Open Login Items…*.
+2. **Approve openconnect.** The helper runs with administrator rights, so it only launches the exact `openconnect` that you have approved. Once the helper is allowed, a window **"Approve openconnect?"** appears by itself and shows which `openconnect` it is about (its location and version).
+   - Click **Approve**, then enter your administrator password. This is the only administrator password the app ever asks for.
+   - If you cancel, nothing is broken: the menu shows "openconnect has not been approved yet" with an **Approve openconnect…** entry, and the window comes back the next time the app starts.
+   - You will be asked again after `brew upgrade openconnect`, because Homebrew then installs a different file. The reason, in detail: [Binary pinning](#binary-pinning).
 3. **Fill in the settings.** Menu → **Settings…**. The list on the left holds your configurations (use **+** and **−** to add or remove one; a configuration brought by a configuration profile has a lock and cannot be removed). For the selected configuration:
 
 | Field | Value |
@@ -83,12 +87,30 @@ The secret is shown once, when you enroll a new authenticator app with your VPN'
 
 Entra ID lets you add an authenticator method yourself, and it shows you the secret when you do. Adding one just for this app leaves the method you already use untouched. Your organization must allow authenticator apps.
 
-1. Open <https://accounts.microsoft.com> and sign in with your work or school account, then go to **Account → Security** and add a sign-in method.
-2. Choose **Microsoft Authenticator**.
-3. Select **Set up with a different authentication app**. This is the important choice: it makes Entra ID show a key instead of tying the method to Microsoft's own app.
-4. Click **Can't scan the QR code?** and copy the key that is displayed.
-5. Paste that key into the **TOTP secret** field of OpenConnectMenu's settings (spaces are ignored). The current code appears right below the field.
-6. Back on the web page, click **Next**: Entra ID asks for a 6-digit code to verify the method. Type the code shown in the settings, then click **Save** in the settings.
+> **Watch out.** Entra ID keeps steering you toward Microsoft's own Authenticator app, and at several steps the way out is **a small link**, not a button. The links to look for are in the orange frames below. Click an image to enlarge it.
+
+1. Open <https://accounts.microsoft.com> and sign in with your work or school account, then go to **Account → Security** (Security info) and click **Add sign-in method**.
+
+   <a href="assets/entra-id/entra-1-add-sign-in-method.png"><img src="assets/entra-id/thumbs/entra-1-add-sign-in-method.png" width="260" alt="Security info page with the Add sign-in method button framed"></a>
+
+2. Choose **Microsoft Authenticator** (it is the entry that handles one-time codes).
+
+   <a href="assets/entra-id/entra-2-microsoft-authenticator.png"><img src="assets/entra-id/thumbs/entra-2-microsoft-authenticator.png" width="260" alt="Add a sign-in method dialog with Microsoft Authenticator framed"></a>
+
+3. Entra ID now asks you to **install** Microsoft's app. Do not: click the small link **Set up a different authentication app**, under the Google Play and App Store buttons.
+
+   <a href="assets/entra-id/entra-3-different-authentication-app.png"><img src="assets/entra-id/thumbs/entra-3-different-authentication-app.png" width="260" alt="Install Microsoft Authenticator dialog with the link Set up a different authentication app framed"></a>
+
+4. On **Set up your account in app**, click **Next**.
+
+   <a href="assets/entra-id/entra-4-set-up-account.png"><img src="assets/entra-id/thumbs/entra-4-set-up-account.png" width="260" alt="Set up your account in app dialog with Next framed"></a>
+
+5. On **Scan the QR code**, do not scan anything: click the small link **Can't scan the QR code?** and copy the key that Entra ID then shows.
+
+   <a href="assets/entra-id/entra-5-cant-scan-qr-code.png"><img src="assets/entra-id/thumbs/entra-5-cant-scan-qr-code.png" width="260" alt="Scan the QR code dialog with the link Can't scan the QR code framed"></a>
+
+6. Paste that key into the **TOTP secret** field of OpenConnectMenu's settings (spaces are ignored). The current code appears right below the field.
+7. Back on the web page, click **Next**: Entra ID asks for a 6-digit code to verify the method. Type the code shown in the settings, then click **Save** in the settings.
 
 Optionally, also paste the same key into the matching entry of Apple's **Passwords** app (open the entry, **Edit**, add the key as a verification code): Safari then fills in the code on Entra ID's pages, and both places produce the same codes.
 
@@ -101,7 +123,7 @@ Never paste this secret into a chat or a shared terminal: it is equivalent to yo
 | Menu item | Effect |
 |---|---|
 | Connect / Disconnect | No password prompt. An alert reports a failure. With several configurations, the menu shows **Connect to <name>** for each one; while a VPN is connected only **Disconnect** is offered, and the name of the configuration is shown. |
-| Address, Since | The tunnel's IP address and how long you have been connected. |
+| Address, Since | The tunnel's IP address and how long you have been connected. The menu updates while it is open: the time keeps counting, and a change of state (helper starting or repairing, connecting, disconnecting) shows up without closing it. |
 | openconnect is not installed | Shown before any other state if `openconnect` cannot be found. **Copy install command…** copies `brew install openconnect`. |
 | Starting the helper… / Repairing helper… | Shown while the app is not yet connected to the helper: right after it starts, and after an update, when the helper is repaired automatically. No connection is offered until the helper answers. |
 | Helper not reachable → Repair helper… | Shown when macOS says the helper is enabled but it does not answer. See [Troubleshooting](#troubleshooting). |
@@ -339,6 +361,7 @@ By hand:
 ├── profiles/
 │   └── example.env        Template for a configuration profile
 ├── Icon/                  make-icon.swift, preview and iconset
+├── assets/entra-id/       Screenshots of the Microsoft Entra ID steps (full size and thumbnails) used by the README
 ├── pkg-scripts/           preinstall, postinstall
 ├── pkg-resources/         Installer welcome screen and texts (en, fr, English fallback)
 ├── pkg-distribution.xml.in
